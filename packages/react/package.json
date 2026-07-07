@@ -1,0 +1,33 @@
+{
+  "name": "@local-relay/react",
+  "version": "0.0.0",
+  "description": "React hooks and lightweight UI primitives for Local Relay.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run build -w @local-relay/core && tsc -p tsconfig.json",
+    "typecheck": "npm run build -w @local-relay/core && tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@local-relay/core": "0.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18"
+  }
+}

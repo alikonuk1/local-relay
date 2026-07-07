@@ -1,0 +1,22 @@
+{
+  "name": "local-relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Developer tools for connecting web apps to local LLM runtimes.",
+  "type": "module",
+  "packageManager": "npm@10.2.3",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

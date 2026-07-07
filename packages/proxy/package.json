@@ -1,0 +1,32 @@
+{
+  "name": "@local-relay/proxy",
+  "version": "0.0.0",
+  "description": "Optional localhost proxy for Local Relay browser integrations.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "local-relay-proxy": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run build -w @local-relay/core && tsc -p tsconfig.json",
+    "typecheck": "npm run build -w @local-relay/core && tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@local-relay/core": "0.0.0"
+  },
+  "devDependencies": {}
+}

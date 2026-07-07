@@ -1,0 +1,172 @@
+:root {
+  color: #1e2329;
+  background: #f4f6f8;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #d9dee5;
+}
+
+.control-group {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+label {
+  color: #4a535f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.select,
+.prompt-input {
+  width: 100%;
+  border: 1px solid #bcc6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1e2329;
+}
+
+.select {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #195c63;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #1f6f78;
+  cursor: pointer;
+}
+
+.button.secondary {
+  color: #1f3941;
+  background: #ffffff;
+  border-color: #aeb8c4;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.status-pill {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #c8d0d9;
+  background: #f8fafc;
+  color: #3d4854;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-pill[data-local-relay-status="available"] {
+  border-color: #69a57a;
+  color: #225b34;
+  background: #eef8f1;
+}
+
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  min-height: 0;
+}
+
+.side-panel {
+  padding: 16px;
+  border-right: 1px solid #d9dee5;
+  background: #eef2f5;
+}
+
+.setup-hint {
+  margin: 16px 0 0;
+  color: #52606d;
+  line-height: 1.45;
+}
+
+.error-box {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #d48b8b;
+  border-radius: 6px;
+  color: #7c2626;
+  background: #fff3f3;
+}
+
+.chat-panel {
+  display: grid;
+  grid-template-rows: auto minmax(140px, 30vh) auto 1fr;
+  gap: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.prompt-input {
+  resize: vertical;
+  padding: 12px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.response-output {
+  min-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 1px solid #d9dee5;
+  border-radius: 6px;
+  padding: 14px;
+  background: #ffffff;
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .toolbar,
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .side-panel {
+    border-right: 0;
+    border-bottom: 1px solid #d9dee5;
+  }
+}
