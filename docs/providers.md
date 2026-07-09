@@ -22,8 +22,9 @@ Used endpoints:
 - `GET /api/tags`
 - `GET /api/ps`
 - `POST /api/chat`
+- `POST /api/embed`
 
-Use this provider when you want Ollama-specific metadata such as loaded model state, family, parameter size, and quantization where available.
+Use this provider when you want Ollama-specific metadata such as loaded model state, family, parameter size, and quantization where available. Ollama native also supports Local Relay embeddings through `/api/embed` and converts multimodal chat image parts into Ollama's `images` message field.
 
 ```ts
 const client = createLocalRelayClient({
@@ -49,6 +50,8 @@ Used endpoints:
 
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/embeddings`
+- `POST /v1/responses`
 
 Use this provider when you want Ollama to behave like a generic OpenAI-compatible endpoint.
 
@@ -70,6 +73,8 @@ Used endpoints:
 
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/embeddings`
+- `POST /v1/responses`
 
 LM Studio's local server must be running before Local Relay can connect.
 
@@ -94,6 +99,8 @@ const client = createLocalRelayClient({
   ],
 });
 ```
+
+OpenAI-compatible providers can receive chat tools, multimodal chat parts, embeddings requests, and Responses API requests. Actual support depends on the local runtime and model.
 
 ## Provider Selection Guidance
 

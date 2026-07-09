@@ -105,6 +105,55 @@ const client = createLocalRelayClient({
 });
 ```
 
+## Embeddings, Tools, Multimodal, And Responses
+
+Local Relay exposes advanced local-provider features through the same direct or proxy client interface.
+
+```ts
+const embedding = await client.embeddings({
+  provider: "ollama",
+  model: "nomic-embed-text",
+  input: "Local-first AI",
+});
+```
+
+```ts
+const chat = await client.chat({
+  provider: "lmstudio",
+  model: "local-tool-or-vision-model",
+  messages: [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "Describe this image." },
+        { type: "image_url", image_url: { url: "data:image/png;base64,..." } },
+      ],
+    },
+  ],
+  tools: [
+    {
+      type: "function",
+      function: {
+        name: "lookupNote",
+        parameters: { type: "object", properties: { id: { type: "string" } } },
+      },
+    },
+  ],
+  toolChoice: "auto",
+});
+```
+
+```ts
+const response = await client.createResponse({
+  provider: "openai-compatible",
+  baseUrl: "http://localhost:8000/v1",
+  model: "local-responses-model",
+  input: "Write one concise sentence.",
+});
+```
+
+Provider support is runtime-dependent. OpenAI-compatible endpoints receive OpenAI-shaped request bodies. Ollama native supports embeddings and image chat parts directly, while Responses API calls require an OpenAI-compatible `/v1/responses` endpoint.
+
 ## Browser Limitations
 
 Direct browser calls to localhost providers can fail because of CORS, mixed-content rules, or local network restrictions. Local Relay should detect and report these failures clearly, but it should not bypass browser security.

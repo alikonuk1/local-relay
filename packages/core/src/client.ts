@@ -8,6 +8,9 @@ import type {
   ChatStreamEvent,
   ChatStreamRequest,
   CreateLocalRelayClientOptions,
+  EmbeddingRequest,
+  EmbeddingResponse,
+  LocalRelayResponse,
   LocalRelayClient,
   LocalRelayModel,
   LocalRelayProvider,
@@ -16,6 +19,9 @@ import type {
   ProviderDetectionResult,
   ProviderId,
   ProviderRequestOptions,
+  ResponseRequest,
+  ResponseStreamEvent,
+  ResponseStreamRequest,
 } from "./types.js";
 import { normalizeBaseUrl } from "./utils.js";
 
@@ -105,6 +111,39 @@ export function createLocalRelayClient(
     streamChat(request) {
       const target = resolveTarget(registrations, request);
       return target.adapter.streamChat({
+        provider: target.provider,
+        request,
+        fetch: fetchImpl,
+        timeoutMs: request.timeoutMs ?? requestTimeoutMs,
+        ...(request.signal ? { signal: request.signal } : {}),
+      });
+    },
+
+    embeddings(request) {
+      const target = resolveTarget(registrations, request);
+      return target.adapter.embeddings({
+        provider: target.provider,
+        request,
+        fetch: fetchImpl,
+        timeoutMs: request.timeoutMs ?? requestTimeoutMs,
+        ...(request.signal ? { signal: request.signal } : {}),
+      });
+    },
+
+    createResponse(request) {
+      const target = resolveTarget(registrations, request);
+      return target.adapter.createResponse({
+        provider: target.provider,
+        request,
+        fetch: fetchImpl,
+        timeoutMs: request.timeoutMs ?? requestTimeoutMs,
+        ...(request.signal ? { signal: request.signal } : {}),
+      });
+    },
+
+    streamResponse(request) {
+      const target = resolveTarget(registrations, request);
+      return target.adapter.streamResponse({
         provider: target.provider,
         request,
         fetch: fetchImpl,
@@ -204,7 +243,7 @@ function resolveTargets(
 
 function resolveTarget(
   registrations: ProviderRegistration[],
-  request: ChatRequest | ChatStreamRequest,
+  request: ChatRequest | ChatStreamRequest | EmbeddingRequest | ResponseRequest | ResponseStreamRequest,
 ): ProviderRegistration {
   if (request.baseUrl) {
     return createCustomRegistration({

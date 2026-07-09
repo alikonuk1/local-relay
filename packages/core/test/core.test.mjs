@@ -52,6 +52,66 @@ test("sends non-streaming chat to an OpenAI-compatible provider", async () => {
   assert.equal(response.usage.totalTokens, 4);
 });
 
+test("passes tools and multimodal content to OpenAI-compatible chat", async () => {
+  let requestBody;
+  const client = createLocalRelayClient({
+    providers: ["lmstudio"],
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        model: "local-model",
+        choices: [
+          {
+            message: {
+              content: "",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "lookup", arguments: "{\"q\":\"local\"}" },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      });
+    },
+  });
+
+  const response = await client.chat({
+    provider: "lmstudio",
+    model: "local-model",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "describe this" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,abc" } },
+        ],
+      },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "lookup",
+          parameters: { type: "object" },
+        },
+      },
+    ],
+    toolChoice: "auto",
+    responseFormat: { type: "json_object" },
+  });
+
+  assert.equal(requestBody.tools[0].function.name, "lookup");
+  assert.equal(requestBody.tool_choice, "auto");
+  assert.equal(requestBody.response_format.type, "json_object");
+  assert.equal(requestBody.messages[0].content[1].image_url.url, "data:image/png;base64,abc");
+  assert.equal(response.toolCalls[0].function.name, "lookup");
+  assert.equal(response.finishReason, "tool_calls");
+});
+
 test("streams chat tokens from an OpenAI-compatible provider", async () => {
   const client = createLocalRelayClient({
     providers: ["lmstudio"],
@@ -83,6 +143,114 @@ test("streams chat tokens from an OpenAI-compatible provider", async () => {
     ["hel", "lo"],
   );
   assert.equal(events.find((event) => event.type === "message").content, "hello");
+});
+
+test("creates embeddings with an OpenAI-compatible provider", async () => {
+  let urlSeen;
+  let requestBody;
+  const client = createLocalRelayClient({
+    providers: ["lmstudio"],
+    fetch: async (url, init) => {
+      urlSeen = String(url);
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        model: "embed-model",
+        data: [{ object: "embedding", index: 0, embedding: [0.1, 0.2] }],
+        usage: { prompt_tokens: 2, total_tokens: 2 },
+      });
+    },
+  });
+
+  const response = await client.embeddings({
+    provider: "lmstudio",
+    model: "embed-model",
+    input: ["hello"],
+    dimensions: 2,
+    encodingFormat: "float",
+  });
+
+  assert.equal(urlSeen, "http://localhost:1234/v1/embeddings");
+  assert.deepEqual(requestBody.input, ["hello"]);
+  assert.equal(requestBody.dimensions, 2);
+  assert.equal(requestBody.encoding_format, "float");
+  assert.deepEqual(response.data[0].embedding, [0.1, 0.2]);
+  assert.equal(response.usage.totalTokens, 2);
+});
+
+test("creates a response with an OpenAI-compatible provider", async () => {
+  let urlSeen;
+  let requestBody;
+  const client = createLocalRelayClient({
+    providers: ["openai-compatible"],
+    fetch: async (url, init) => {
+      urlSeen = String(url);
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        id: "resp_1",
+        model: "local-responses-model",
+        output_text: "hello response",
+        output: [{ id: "msg_1", type: "message", role: "assistant", content: [] }],
+        usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+      });
+    },
+  });
+
+  const response = await client.createResponse({
+    provider: "openai-compatible",
+    baseUrl: "http://localhost:8000/v1",
+    model: "local-responses-model",
+    input: "Say hello",
+    instructions: "Be brief.",
+    maxOutputTokens: 32,
+    tools: [{ type: "function", name: "lookup" }],
+    toolChoice: "auto",
+  });
+
+  assert.equal(urlSeen, "http://localhost:8000/v1/responses");
+  assert.equal(requestBody.input, "Say hello");
+  assert.equal(requestBody.instructions, "Be brief.");
+  assert.equal(requestBody.max_output_tokens, 32);
+  assert.equal(requestBody.tools[0].name, "lookup");
+  assert.equal(response.outputText, "hello response");
+  assert.equal(response.usage.completionTokens, 2);
+});
+
+test("streams response events from an OpenAI-compatible provider", async () => {
+  const client = createLocalRelayClient({
+    providers: [
+      {
+        id: "openai-compatible",
+        baseUrl: "http://localhost:8000/v1",
+      },
+    ],
+    fetch: async () =>
+      streamResponse(
+        [
+          'data: {"type":"response.output_text.delta","delta":"hel"}',
+          "",
+          'data: {"type":"response.output_text.delta","delta":"lo"}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+        "text/event-stream",
+      ),
+  });
+
+  const events = [];
+  for await (const event of client.streamResponse({
+    provider: "openai-compatible",
+    model: "local-responses-model",
+    input: "Say hello",
+  })) {
+    events.push(event);
+  }
+
+  assert.deepEqual(
+    events.filter((event) => event.type === "text-delta").map((event) => event.text),
+    ["hel", "lo"],
+  );
+  assert.equal(events.at(-1).type, "done");
 });
 
 test("lists Ollama native models and loaded state", async () => {
@@ -161,6 +329,66 @@ test("sends non-streaming chat to Ollama native API", async () => {
   assert.equal(requestBody.options.num_predict, 10);
   assert.equal(response.content, "native hello");
   assert.equal(response.usage.totalTokens, 6);
+});
+
+test("converts multimodal chat parts for Ollama native API", async () => {
+  let requestBody;
+  const client = createLocalRelayClient({
+    providers: ["ollama"],
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        model: "llava",
+        message: { role: "assistant", content: "image ok" },
+        done: true,
+      });
+    },
+  });
+
+  await client.chat({
+    provider: "ollama",
+    model: "llava",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is this?" },
+          { type: "image_url", image_url: "data:image/png;base64,abc123" },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(requestBody.messages[0].content, "What is this?");
+  assert.deepEqual(requestBody.messages[0].images, ["abc123"]);
+});
+
+test("creates embeddings with Ollama native API", async () => {
+  let urlSeen;
+  let requestBody;
+  const client = createLocalRelayClient({
+    providers: ["ollama"],
+    fetch: async (url, init) => {
+      urlSeen = String(url);
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        model: "nomic-embed-text",
+        embeddings: [[0.3, 0.4]],
+        prompt_eval_count: 2,
+      });
+    },
+  });
+
+  const response = await client.embeddings({
+    provider: "ollama",
+    model: "nomic-embed-text",
+    input: "hello",
+  });
+
+  assert.equal(urlSeen, "http://localhost:11434/api/embed");
+  assert.equal(requestBody.input, "hello");
+  assert.deepEqual(response.data[0].embedding, [0.3, 0.4]);
+  assert.equal(response.usage.promptTokens, 2);
 });
 
 test("uses a separate request timeout for chat", async () => {
@@ -295,6 +523,63 @@ test("proxy client sends non-streaming chat through the local proxy", async () =
   assert.equal(response.content, "proxy hello");
 });
 
+test("proxy client sends embeddings through the local proxy", async () => {
+  let urlSeen;
+  let requestBody;
+  const client = createLocalRelayProxyClient({
+    fetch: async (url, init) => {
+      urlSeen = String(url);
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        response: {
+          model: "embed-model",
+          provider: "lmstudio",
+          data: [{ index: 0, embedding: [0.1] }],
+        },
+      });
+    },
+  });
+
+  const response = await client.embeddings({
+    provider: "lmstudio",
+    model: "embed-model",
+    input: "hello",
+  });
+
+  assert.equal(urlSeen, "http://127.0.0.1:44114/providers/lmstudio/embeddings");
+  assert.equal(requestBody.input, "hello");
+  assert.deepEqual(response.data[0].embedding, [0.1]);
+});
+
+test("proxy client creates responses through the local proxy", async () => {
+  let urlSeen;
+  let requestBody;
+  const client = createLocalRelayProxyClient({
+    fetch: async (url, init) => {
+      urlSeen = String(url);
+      requestBody = JSON.parse(init.body);
+      return jsonResponse({
+        response: {
+          model: "response-model",
+          provider: "openai-compatible",
+          output: [],
+          outputText: "proxied",
+        },
+      });
+    },
+  });
+
+  const response = await client.createResponse({
+    provider: "openai-compatible",
+    model: "response-model",
+    input: "hi",
+  });
+
+  assert.equal(urlSeen, "http://127.0.0.1:44114/providers/openai-compatible/responses");
+  assert.equal(requestBody.input, "hi");
+  assert.equal(response.outputText, "proxied");
+});
+
 test("proxy client streams chat events from server-sent events", async () => {
   const client = createLocalRelayProxyClient({
     fetch: async () =>
@@ -329,6 +614,35 @@ test("proxy client streams chat events from server-sent events", async () => {
     ["hel", "lo"],
   );
   assert.equal(events.find((event) => event.type === "message").content, "hello");
+  assert.equal(events.at(-1).type, "done");
+});
+
+test("proxy client streams response events from server-sent events", async () => {
+  const client = createLocalRelayProxyClient({
+    fetch: async () =>
+      streamResponse(
+        [
+          'data: {"type":"start","provider":"openai-compatible","model":"response-model"}',
+          "",
+          'data: {"type":"text-delta","text":"hi"}',
+          "",
+          'data: {"type":"done"}',
+          "",
+        ].join("\n"),
+        "text/event-stream",
+      ),
+  });
+
+  const events = [];
+  for await (const event of client.streamResponse({
+    provider: "openai-compatible",
+    model: "response-model",
+    input: "hi",
+  })) {
+    events.push(event);
+  }
+
+  assert.equal(events.find((event) => event.type === "text-delta").text, "hi");
   assert.equal(events.at(-1).type, "done");
 });
 

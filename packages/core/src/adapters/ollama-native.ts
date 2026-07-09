@@ -1,16 +1,23 @@
 import {
   InvalidProviderResponseError,
   ProviderCorsError,
+  UnsupportedCapabilityError,
   ProviderUnavailableError,
 } from "../errors.js";
 import type {
   AdapterChatRequest,
+  AdapterEmbeddingRequest,
   AdapterRequestOptions,
+  AdapterResponseRequest,
   ChatMessage,
   ChatResponse,
   ChatStreamEvent,
+  ChatContentPart,
+  EmbeddingResponse,
+  LocalRelayResponse,
   LocalRelayModel,
   ProviderAdapter,
+  ResponseStreamEvent,
   TokenUsage,
 } from "../types.js";
 import { joinUrl, normalizeBaseUrl, withTimeout } from "../utils.js";
@@ -50,10 +57,19 @@ interface OllamaChatResponse {
   message?: {
     role?: string;
     content?: string;
+    tool_calls?: Array<Record<string, unknown>>;
   };
   done?: boolean;
   prompt_eval_count?: number;
   eval_count?: number;
+  [key: string]: unknown;
+}
+
+interface OllamaEmbedResponse {
+  model?: string;
+  embeddings?: number[][];
+  embedding?: number[];
+  prompt_eval_count?: number;
   [key: string]: unknown;
 }
 
@@ -62,7 +78,7 @@ export function createOllamaNativeAdapter(): ProviderAdapter {
     id: "ollama",
     name: "Ollama",
     defaultBaseUrls: ["http://localhost:11434"],
-    capabilities: ["chat", "chat-streaming", "model-list"],
+    capabilities: ["chat", "chat-streaming", "model-list", "embeddings", "tools", "vision"],
 
     async detect(options) {
       const provider = { ...options.provider, status: "unavailable" as const };
@@ -89,6 +105,9 @@ export function createOllamaNativeAdapter(): ProviderAdapter {
     listModels: listOllamaModels,
     chat: chatWithOllama,
     streamChat: streamChatWithOllama,
+    embeddings: embeddingsWithOllama,
+    createResponse: unsupportedResponseApi,
+    streamResponse: unsupportedResponseStreamApi,
   };
 }
 
@@ -176,6 +195,15 @@ async function chatWithOllama(options: AdapterChatRequest): Promise<ChatResponse
     model: response.model ?? options.request.model,
     provider: options.provider.id,
     content,
+    ...(Array.isArray(response.message?.tool_calls)
+      ? {
+          toolCalls: response.message.tool_calls.map((toolCall, index) => ({
+            id: `tool-call-${index}`,
+            type: "function",
+            raw: toolCall,
+          })),
+        }
+      : {}),
     ...(usage !== undefined ? { usage } : {}),
     raw: response,
   };
@@ -265,18 +293,85 @@ async function* streamChatWithOllama(
   yield { type: "done" };
 }
 
+async function embeddingsWithOllama(options: AdapterEmbeddingRequest): Promise<EmbeddingResponse> {
+  const endpoint = joinUrl(options.provider.baseUrl, "/api/embed");
+  const response = await requestJson<OllamaEmbedResponse>(options, endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...(options.request.rawOptions ?? {}),
+      model: options.request.model,
+      input: options.request.input,
+    }),
+  });
+
+  const embeddings = response.embeddings ?? (response.embedding ? [response.embedding] : undefined);
+  if (!Array.isArray(embeddings)) {
+    throw new InvalidProviderResponseError("Ollama did not return embeddings.", {
+      provider: options.provider.id,
+      baseUrl: options.provider.baseUrl,
+      endpoint,
+    });
+  }
+
+  return {
+    model: response.model ?? options.request.model,
+    provider: options.provider.id,
+    data: embeddings.map((embedding, index) => ({
+      index,
+      embedding,
+      raw: embedding,
+    })),
+    ...(response.prompt_eval_count !== undefined
+      ? {
+          usage: {
+            promptTokens: response.prompt_eval_count,
+            raw: response,
+          },
+        }
+      : {}),
+    raw: response,
+  };
+}
+
+async function unsupportedResponseApi(options: AdapterResponseRequest): Promise<LocalRelayResponse> {
+  throw new UnsupportedCapabilityError("Ollama native does not expose the OpenAI Responses API.", {
+    provider: options.provider.id,
+    baseUrl: options.provider.baseUrl,
+    suggestion: "Use the ollama-openai provider or a local OpenAI-compatible server that implements /v1/responses.",
+  });
+}
+
+async function* unsupportedResponseStreamApi(
+  options: AdapterResponseRequest,
+): AsyncIterable<ResponseStreamEvent> {
+  throw new UnsupportedCapabilityError("Ollama native does not expose the OpenAI Responses API.", {
+    provider: options.provider.id,
+    baseUrl: options.provider.baseUrl,
+    suggestion: "Use the ollama-openai provider or a local OpenAI-compatible server that implements /v1/responses.",
+  });
+}
+
 function createOllamaChatBody(
-  request: { model: string; messages: ChatMessage[]; temperature?: number; maxTokens?: number },
+  request: {
+    model: string;
+    messages: ChatMessage[];
+    temperature?: number;
+    maxTokens?: number;
+    tools?: unknown[];
+    rawOptions?: Record<string, unknown>;
+  },
   stream: boolean,
 ): Record<string, unknown> {
   return {
+    ...(request.rawOptions ?? {}),
     model: request.model,
-    messages: request.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-      ...(message.name ? { name: message.name } : {}),
-    })),
+    messages: request.messages.map(toOllamaMessage),
     stream,
+    ...(request.tools !== undefined ? { tools: request.tools } : {}),
     ...(request.temperature !== undefined || request.maxTokens !== undefined
       ? {
           options: {
@@ -286,6 +381,34 @@ function createOllamaChatBody(
         }
       : {}),
   };
+}
+
+function toOllamaMessage(message: ChatMessage): Record<string, unknown> {
+  const content = Array.isArray(message.content) ? textFromParts(message.content) : message.content;
+  const images = Array.isArray(message.content) ? imagesFromParts(message.content) : [];
+
+  return {
+    role: message.role,
+    content,
+    ...(images.length > 0 ? { images } : {}),
+    ...(message.name ? { name: message.name } : {}),
+    ...(message.toolCalls ? { tool_calls: message.toolCalls.map((toolCall) => toolCall.raw ?? toolCall) } : {}),
+    ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
+  };
+}
+
+function textFromParts(parts: ChatContentPart[]): string {
+  return parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+}
+
+function imagesFromParts(parts: ChatContentPart[]): string[] {
+  return parts
+    .filter((part) => part.type === "image_url")
+    .map((part) => (typeof part.image_url === "string" ? part.image_url : part.image_url.url))
+    .map((url) => url.replace(/^data:image\/[^;]+;base64,/, ""));
 }
 
 async function requestJson<T>(

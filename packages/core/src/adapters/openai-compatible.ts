@@ -5,14 +5,21 @@ import {
 } from "../errors.js";
 import type {
   AdapterChatRequest,
+  AdapterEmbeddingRequest,
   AdapterRequestOptions,
+  AdapterResponseRequest,
   ChatMessage,
   ChatResponse,
   ChatStreamEvent,
+  ChatToolCall,
+  EmbeddingResponse,
+  LocalRelayResponse,
   LocalRelayModel,
   ProviderAdapter,
   ProviderCapability,
   ProviderId,
+  ResponseStreamEvent,
+  ResponseOutputItem,
   TokenUsage,
 } from "../types.js";
 import { joinUrl, normalizeBaseUrl, withTimeout } from "../utils.js";
@@ -32,14 +39,57 @@ interface OpenAIChatResponse {
   choices?: Array<{
     message?: {
       content?: string | null;
+      tool_calls?: OpenAIChatToolCall[];
     };
     delta?: {
       content?: string | null;
+      tool_calls?: OpenAIChatToolCall[];
     };
+    finish_reason?: string | null;
   }>;
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
+    total_tokens?: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+interface OpenAIChatToolCall {
+  id?: string;
+  type?: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+  [key: string]: unknown;
+}
+
+interface OpenAIEmbeddingsResponse {
+  model?: string;
+  data?: Array<{
+    index?: number;
+    object?: string;
+    embedding?: number[] | string;
+    [key: string]: unknown;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    total_tokens?: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+interface OpenAIResponseObject {
+  id?: string;
+  model?: string;
+  output?: unknown[];
+  output_text?: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
     total_tokens?: number;
     [key: string]: unknown;
   };
@@ -56,7 +106,16 @@ export interface OpenAICompatibleAdapterOptions {
 export function createOpenAICompatibleAdapter(
   options: OpenAICompatibleAdapterOptions,
 ): ProviderAdapter {
-  const capabilities = options.capabilities ?? ["chat", "chat-streaming", "model-list"];
+  const capabilities = options.capabilities ?? [
+    "chat",
+    "chat-streaming",
+    "model-list",
+    "embeddings",
+    "responses-api",
+    "tools",
+    "vision",
+    "json-mode",
+  ];
 
   return {
     id: options.id,
@@ -89,6 +148,9 @@ export function createOpenAICompatibleAdapter(
     listModels: listModelsForProvider,
     chat: chatWithProvider,
     streamChat: streamChatWithProvider,
+    embeddings: embeddingsWithProvider,
+    createResponse: createResponseWithProvider,
+    streamResponse: streamResponseWithProvider,
   };
 }
 
@@ -142,8 +204,9 @@ async function chatWithProvider(options: AdapterChatRequest): Promise<ChatRespon
   );
 
   const content = response.choices?.[0]?.message?.content;
+  const toolCalls = normalizeToolCalls(response.choices?.[0]?.message?.tool_calls);
 
-  if (typeof content !== "string") {
+  if (typeof content !== "string" && (!toolCalls || toolCalls.length === 0)) {
     throw new InvalidProviderResponseError("Provider did not return a chat message.", {
       provider: options.provider.id,
       baseUrl: options.provider.baseUrl,
@@ -157,7 +220,9 @@ async function chatWithProvider(options: AdapterChatRequest): Promise<ChatRespon
     ...(response.id !== undefined ? { id: response.id } : {}),
     model: response.model ?? options.request.model,
     provider: options.provider.id,
-    content,
+    content: content ?? "",
+    ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(response.choices?.[0]?.finish_reason ? { finishReason: response.choices[0].finish_reason } : {}),
     ...(usage !== undefined ? { usage } : {}),
     raw: response,
   };
@@ -189,7 +254,19 @@ async function* streamChatWithProvider(
       baseUrl: options.provider.baseUrl,
       endpoint,
     },
-  );
+  ).catch((error) => {
+    if (error instanceof TypeError) {
+      throw new ProviderCorsError("Provider request failed. This may be a CORS or network issue.", {
+        provider: options.provider.id,
+        baseUrl: options.provider.baseUrl,
+        endpoint,
+        cause: error,
+        suggestion: "Try using a local proxy or enabling CORS for the local provider.",
+      });
+    }
+
+    throw error;
+  });
 
   if (!response.ok) {
     throw new ProviderUnavailableError(`Provider returned HTTP ${response.status}.`, {
@@ -221,10 +298,15 @@ async function* streamChatWithProvider(
       endpoint,
     });
     const token = event.choices?.[0]?.delta?.content;
+    const toolCalls = normalizeToolCalls(event.choices?.[0]?.delta?.tool_calls);
 
     if (typeof token === "string" && token.length > 0) {
       fullContent += token;
       yield { type: "token", text: token, raw: event };
+    }
+
+    for (const toolCall of toolCalls ?? []) {
+      yield { type: "tool-call", toolCall, raw: event };
     }
 
     const usage = normalizeUsage(event.usage);
@@ -237,21 +319,210 @@ async function* streamChatWithProvider(
   yield { type: "done" };
 }
 
+async function embeddingsWithProvider(options: AdapterEmbeddingRequest): Promise<EmbeddingResponse> {
+  const endpoint = joinUrl(options.provider.baseUrl, "/embeddings");
+  const body = {
+    ...(options.request.rawOptions ?? {}),
+    model: options.request.model,
+    input: options.request.input,
+    ...(options.request.dimensions !== undefined ? { dimensions: options.request.dimensions } : {}),
+    ...(options.request.encodingFormat !== undefined ? { encoding_format: options.request.encodingFormat } : {}),
+  };
+
+  const response = await requestJson<OpenAIEmbeddingsResponse>(options, endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!Array.isArray(response.data)) {
+    throw new InvalidProviderResponseError("Provider did not return an embeddings list.", {
+      provider: options.provider.id,
+      baseUrl: options.provider.baseUrl,
+      endpoint,
+    });
+  }
+
+  const data = response.data.map((item, index) => {
+    if (!Array.isArray(item.embedding) && typeof item.embedding !== "string") {
+      throw new InvalidProviderResponseError("Provider returned an invalid embedding.", {
+        provider: options.provider.id,
+        baseUrl: options.provider.baseUrl,
+        endpoint,
+      });
+    }
+
+    return {
+      index: item.index ?? index,
+      embedding: item.embedding,
+      ...(item.object !== undefined ? { object: item.object } : {}),
+      raw: item,
+    };
+  });
+
+  return {
+    model: response.model ?? options.request.model,
+    provider: options.provider.id,
+    data,
+    ...(response.usage ? { usage: normalizeOpenAIUsage(response.usage) } : {}),
+    raw: response,
+  };
+}
+
+async function createResponseWithProvider(options: AdapterResponseRequest): Promise<LocalRelayResponse> {
+  const endpoint = joinUrl(options.provider.baseUrl, "/responses");
+  const body = createOpenAIResponsesBody(options.request, false);
+  const response = await requestJson<OpenAIResponseObject>(options, endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  return normalizeResponseObject(response, options.provider.id, options.request.model);
+}
+
+async function* streamResponseWithProvider(
+  options: AdapterResponseRequest,
+): AsyncIterable<ResponseStreamEvent> {
+  const endpoint = joinUrl(options.provider.baseUrl, "/responses");
+  const body = createOpenAIResponsesBody(options.request, true);
+
+  yield { type: "start", provider: options.provider.id, model: options.request.model };
+
+  const response = await withTimeout(
+    (signal) =>
+      options.fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "text/event-stream",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal,
+      }),
+    options.timeoutMs,
+    options.signal,
+    {
+      provider: options.provider.id,
+      baseUrl: options.provider.baseUrl,
+      endpoint,
+    },
+  ).catch((error) => {
+    if (error instanceof TypeError) {
+      throw new ProviderCorsError("Provider request failed. This may be a CORS or network issue.", {
+        provider: options.provider.id,
+        baseUrl: options.provider.baseUrl,
+        endpoint,
+        cause: error,
+        suggestion: "Try using a local proxy or enabling CORS for the local provider.",
+      });
+    }
+
+    throw error;
+  });
+
+  if (!response.ok) {
+    throw new ProviderUnavailableError(`Provider returned HTTP ${response.status}.`, {
+      provider: options.provider.id,
+      baseUrl: options.provider.baseUrl,
+      endpoint,
+      status: response.status,
+    });
+  }
+
+  if (!response.body) {
+    throw new InvalidProviderResponseError("Provider did not return a response stream.", {
+      provider: options.provider.id,
+      baseUrl: options.provider.baseUrl,
+      endpoint,
+    });
+  }
+
+  for await (const payload of parseServerSentEvents(response.body)) {
+    if (payload === "[DONE]") {
+      break;
+    }
+
+    const event = parseJsonPayload<Record<string, unknown>>(payload, {
+      provider: options.provider.id,
+      baseUrl: options.provider.baseUrl,
+      endpoint,
+    });
+    const eventType = typeof event.type === "string" ? event.type : "response.event";
+
+    if (eventType === "response.output_text.delta" && typeof event.delta === "string") {
+      yield { type: "text-delta", text: event.delta, raw: event };
+    }
+
+    yield { type: "response-event", event: eventType, raw: event };
+  }
+
+  yield { type: "done" };
+}
+
 function createOpenAIChatBody(
-  request: { model: string; messages: ChatMessage[]; temperature?: number; maxTokens?: number },
+  request: {
+    model: string;
+    messages: ChatMessage[];
+    temperature?: number;
+    maxTokens?: number;
+    tools?: unknown[];
+    toolChoice?: unknown;
+    responseFormat?: unknown;
+    rawOptions?: Record<string, unknown>;
+  },
   stream: boolean,
 ): Record<string, unknown> {
   return {
+    ...(request.rawOptions ?? {}),
     model: request.model,
     messages: request.messages.map((message) => ({
       role: message.role,
       content: message.content,
       ...(message.name ? { name: message.name } : {}),
       ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
+      ...(message.toolCalls ? { tool_calls: message.toolCalls.map(denormalizeToolCall) } : {}),
     })),
     stream,
     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     ...(request.maxTokens !== undefined ? { max_tokens: request.maxTokens } : {}),
+    ...(request.tools !== undefined ? { tools: request.tools } : {}),
+    ...(request.toolChoice !== undefined ? { tool_choice: request.toolChoice } : {}),
+    ...(request.responseFormat !== undefined ? { response_format: request.responseFormat } : {}),
+  };
+}
+
+function createOpenAIResponsesBody(
+  request: {
+    model: string;
+    input: unknown;
+    instructions?: string;
+    previousResponseId?: string;
+    temperature?: number;
+    maxOutputTokens?: number;
+    tools?: unknown[];
+    toolChoice?: unknown;
+    rawOptions?: Record<string, unknown>;
+  },
+  stream: boolean,
+): Record<string, unknown> {
+  return {
+    ...(request.rawOptions ?? {}),
+    model: request.model,
+    input: request.input,
+    stream,
+    ...(request.instructions !== undefined ? { instructions: request.instructions } : {}),
+    ...(request.previousResponseId !== undefined ? { previous_response_id: request.previousResponseId } : {}),
+    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.maxOutputTokens !== undefined ? { max_output_tokens: request.maxOutputTokens } : {}),
+    ...(request.tools !== undefined ? { tools: request.tools } : {}),
+    ...(request.toolChoice !== undefined ? { tool_choice: request.toolChoice } : {}),
   };
 }
 
@@ -362,5 +633,92 @@ function normalizeUsage(usage: OpenAIChatResponse["usage"]): TokenUsage | undefi
     ...(usage.completion_tokens !== undefined ? { completionTokens: usage.completion_tokens } : {}),
     ...(usage.total_tokens !== undefined ? { totalTokens: usage.total_tokens } : {}),
     raw: usage,
+  };
+}
+
+function normalizeOpenAIUsage(usage: {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  [key: string]: unknown;
+}): TokenUsage {
+  const promptTokens = usage.prompt_tokens ?? usage.input_tokens;
+  const completionTokens = usage.completion_tokens ?? usage.output_tokens;
+
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(usage.total_tokens !== undefined ? { totalTokens: usage.total_tokens } : {}),
+    raw: usage,
+  };
+}
+
+function normalizeToolCalls(toolCalls: OpenAIChatToolCall[] | undefined): ChatToolCall[] | undefined {
+  if (!Array.isArray(toolCalls)) {
+    return undefined;
+  }
+
+  return toolCalls
+    .filter((toolCall) => typeof toolCall.id === "string" || typeof toolCall.function?.name === "string")
+    .map((toolCall, index) => ({
+      id: toolCall.id ?? `tool-call-${index}`,
+      type: toolCall.type ?? "function",
+      ...(toolCall.function?.name
+        ? {
+            function: {
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments ?? "",
+            },
+          }
+        : {}),
+      raw: toolCall,
+    }));
+}
+
+function denormalizeToolCall(toolCall: ChatToolCall): Record<string, unknown> {
+  return {
+    id: toolCall.id,
+    type: toolCall.type,
+    ...(toolCall.function ? { function: toolCall.function } : {}),
+  };
+}
+
+function normalizeResponseObject(
+  response: OpenAIResponseObject,
+  provider: ProviderId,
+  fallbackModel: string,
+): LocalRelayResponse {
+  const output = Array.isArray(response.output) ? response.output.map(normalizeResponseOutputItem) : [];
+  return {
+    ...(response.id !== undefined ? { id: response.id } : {}),
+    model: response.model ?? fallbackModel,
+    provider,
+    output,
+    ...(typeof response.output_text === "string" ? { outputText: response.output_text } : {}),
+    ...(response.usage ? { usage: normalizeOpenAIUsage(response.usage) } : {}),
+    raw: response,
+  };
+}
+
+function normalizeResponseOutputItem(item: unknown): ResponseOutputItem {
+  if (typeof item !== "object" || item === null) {
+    return {
+      type: "unknown",
+      raw: item,
+    };
+  }
+
+  const record = item as Record<string, unknown>;
+  return {
+    ...(typeof record.id === "string" ? { id: record.id } : {}),
+    type: typeof record.type === "string" ? record.type : "unknown",
+    ...(typeof record.role === "string" ? { role: record.role } : {}),
+    ...("content" in record ? { content: record.content } : {}),
+    ...(typeof record.name === "string" ? { name: record.name } : {}),
+    ...(typeof record.arguments === "string" ? { arguments: record.arguments } : {}),
+    ...(typeof record.call_id === "string" ? { callId: record.call_id } : {}),
+    raw: item,
   };
 }

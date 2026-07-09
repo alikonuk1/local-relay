@@ -125,6 +125,82 @@ test("forwards chat requests through proxy", async () => {
   }
 });
 
+test("forwards embedding requests through proxy", async () => {
+  let requestSeen;
+  const proxy = await startProxy({
+    client: createStubClient({
+      embeddings: async (request) => {
+        requestSeen = request;
+        return {
+          model: request.model,
+          provider: request.provider,
+          data: [{ index: 0, embedding: [0.1, 0.2] }],
+        };
+      },
+    }),
+  });
+
+  try {
+    const response = await fetch(`${proxyBaseUrl(proxy)}/providers/lmstudio/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "embed-model",
+        input: "hello",
+        dimensions: 2,
+      }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(requestSeen.provider, "lmstudio");
+    assert.equal(requestSeen.input, "hello");
+    assert.equal(requestSeen.dimensions, 2);
+    assert.deepEqual(body.response.data[0].embedding, [0.1, 0.2]);
+  } finally {
+    await proxy.stop();
+  }
+});
+
+test("forwards Responses API requests through proxy", async () => {
+  let requestSeen;
+  const proxy = await startProxy({
+    client: createStubClient({
+      createResponse: async (request) => {
+        requestSeen = request;
+        return {
+          model: request.model,
+          provider: request.provider,
+          output: [],
+          outputText: "hello",
+        };
+      },
+    }),
+  });
+
+  try {
+    const response = await fetch(`${proxyBaseUrl(proxy)}/providers/openai-compatible/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "response-model",
+        input: "hi",
+        tools: [{ type: "function", name: "lookup" }],
+        toolChoice: "auto",
+      }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(requestSeen.provider, "openai-compatible");
+    assert.equal(requestSeen.input, "hi");
+    assert.equal(requestSeen.tools[0].name, "lookup");
+    assert.equal(body.response.outputText, "hello");
+  } finally {
+    await proxy.stop();
+  }
+});
+
 test("streams chat requests as server-sent events", async () => {
   const proxy = await startProxy({
     client: createStubClient({
@@ -151,6 +227,37 @@ test("streams chat requests as server-sent events", async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type"), /text\/event-stream/);
     assert.match(text, /"type":"token","text":"hel"/);
+    assert.match(text, /"type":"done"/);
+  } finally {
+    await proxy.stop();
+  }
+});
+
+test("streams Responses API requests as server-sent events", async () => {
+  const proxy = await startProxy({
+    client: createStubClient({
+      streamResponse: async function* () {
+        yield { type: "start", provider: "openai-compatible", model: "response-model" };
+        yield { type: "text-delta", text: "hi" };
+        yield { type: "done" };
+      },
+    }),
+  });
+
+  try {
+    const response = await fetch(`${proxyBaseUrl(proxy)}/providers/openai-compatible/responses/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "response-model",
+        input: "hi",
+      }),
+    });
+    const text = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/event-stream/);
+    assert.match(text, /"type":"text-delta","text":"hi"/);
     assert.match(text, /"type":"done"/);
   } finally {
     await proxy.stop();
@@ -275,6 +382,19 @@ function createStubClient(overrides = {}) {
       content: "",
     }),
     streamChat: async function* () {
+      yield { type: "done" };
+    },
+    embeddings: async (request) => ({
+      model: request.model,
+      provider: request.provider,
+      data: [],
+    }),
+    createResponse: async (request) => ({
+      model: request.model,
+      provider: request.provider,
+      output: [],
+    }),
+    streamResponse: async function* () {
       yield { type: "done" };
     },
     ...overrides,

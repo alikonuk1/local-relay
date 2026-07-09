@@ -79,6 +79,46 @@ Content-Type: application/json
 
 The streaming endpoint returns server-sent events. Each event has a JSON payload matching Local Relay's stream event shape.
 
+### Embeddings
+
+```http
+POST /providers/ollama/embeddings
+Content-Type: application/json
+
+{
+  "model": "nomic-embed-text",
+  "input": "Hello",
+  "timeoutMs": 60000
+}
+```
+
+### Responses API
+
+```http
+POST /providers/openai-compatible/responses
+Content-Type: application/json
+
+{
+  "baseUrl": "http://localhost:8000/v1",
+  "model": "local-responses-model",
+  "input": "Write one sentence.",
+  "tools": [{ "type": "function", "name": "lookup" }]
+}
+```
+
+```http
+POST /providers/openai-compatible/responses/stream
+Content-Type: application/json
+
+{
+  "baseUrl": "http://localhost:8000/v1",
+  "model": "local-responses-model",
+  "input": "Write one sentence."
+}
+```
+
+The Responses streaming endpoint returns server-sent events with Local Relay response stream event payloads.
+
 ## Browser Client
 
 Use `createLocalRelayProxyClient` from `@local-relay/core` when a browser app should talk to the proxy instead of calling Ollama or LM Studio directly.
@@ -92,6 +132,11 @@ const client = createLocalRelayProxyClient({
 
 const providers = await client.detectProviders();
 const models = await client.listModels({ provider: "ollama" });
+const embedding = await client.embeddings({
+  provider: "ollama",
+  model: "nomic-embed-text",
+  input: "Local-first AI",
+});
 
 for await (const event of client.streamChat({
   provider: "ollama",

@@ -8,6 +8,7 @@ import type {
   LocalRelayClient,
   ProviderConfig,
   ProviderId,
+  ResponseStreamEvent,
 } from "@local-relay/core";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -41,7 +42,18 @@ interface ParsedBody {
   baseUrl?: unknown;
   temperature?: unknown;
   maxTokens?: unknown;
+  maxOutputTokens?: unknown;
+  input?: unknown;
+  dimensions?: unknown;
+  encodingFormat?: unknown;
+  tools?: unknown;
+  toolChoice?: unknown;
+  responseFormat?: unknown;
+  instructions?: unknown;
+  previousResponseId?: unknown;
   timeoutMs?: unknown;
+  metadata?: unknown;
+  rawOptions?: unknown;
 }
 
 export function createLocalRelayProxy(options: LocalRelayProxyOptions = {}): LocalRelayProxy {
@@ -172,6 +184,32 @@ async function handleRequest(
 
     if (
       request.method === "POST" &&
+      parts.length === 3 &&
+      parts[0] === "providers" &&
+      parts[2] === "embeddings"
+    ) {
+      const provider = decodeURIComponent(parts[1] ?? "");
+      const body = await readJsonBody(request, context.maxBodyBytes);
+      const embeddingRequest = toEmbeddingRequest(provider, body);
+      writeJson(response, 200, { response: await context.client.embeddings(embeddingRequest) });
+      return;
+    }
+
+    if (
+      request.method === "POST" &&
+      parts.length === 3 &&
+      parts[0] === "providers" &&
+      parts[2] === "responses"
+    ) {
+      const provider = decodeURIComponent(parts[1] ?? "");
+      const body = await readJsonBody(request, context.maxBodyBytes);
+      const responseRequest = toResponseRequest(provider, body);
+      writeJson(response, 200, { response: await context.client.createResponse(responseRequest) });
+      return;
+    }
+
+    if (
+      request.method === "POST" &&
       parts.length === 4 &&
       parts[0] === "providers" &&
       parts[2] === "chat" &&
@@ -181,6 +219,20 @@ async function handleRequest(
       const body = await readJsonBody(request, context.maxBodyBytes);
       const chatRequest = toChatRequest(provider, body);
       await writeEventStream(response, context.client.streamChat(chatRequest));
+      return;
+    }
+
+    if (
+      request.method === "POST" &&
+      parts.length === 4 &&
+      parts[0] === "providers" &&
+      parts[2] === "responses" &&
+      parts[3] === "stream"
+    ) {
+      const provider = decodeURIComponent(parts[1] ?? "");
+      const body = await readJsonBody(request, context.maxBodyBytes);
+      const responseRequest = toResponseRequest(provider, body);
+      await writeEventStream(response, context.client.streamResponse(responseRequest));
       return;
     }
 
@@ -205,24 +257,74 @@ function toChatRequest(providerFromPath: ProviderId, body: ParsedBody) {
     throw new ProxyRequestError(400, "invalid_request", "Request body requires model and messages.");
   }
 
+  const toolChoice = toChatToolChoice(body.toolChoice);
+
+  return {
+    ...commonRequestFields(providerFromPath, body),
+    provider: typeof body.provider === "string" ? body.provider : providerFromPath,
+    model: body.model,
+    messages: body.messages,
+    ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
+    ...(typeof body.maxTokens === "number" ? { maxTokens: body.maxTokens } : {}),
+    ...(Array.isArray(body.tools) ? { tools: body.tools } : {}),
+    ...(toolChoice !== undefined ? { toolChoice } : {}),
+    ...(body.responseFormat !== null && body.responseFormat !== undefined ? { responseFormat: body.responseFormat } : {}),
+  };
+}
+
+function toEmbeddingRequest(providerFromPath: ProviderId, body: ParsedBody) {
+  if (typeof body.model !== "string" || !isEmbeddingInput(body.input)) {
+    throw new ProxyRequestError(400, "invalid_request", "Request body requires model and input.");
+  }
+
+  const encodingFormat = toEmbeddingEncodingFormat(body.encodingFormat);
+
+  return {
+    ...commonRequestFields(providerFromPath, body),
+    model: body.model,
+    input: body.input,
+    ...(typeof body.dimensions === "number" ? { dimensions: body.dimensions } : {}),
+    ...(encodingFormat !== undefined ? { encodingFormat } : {}),
+  };
+}
+
+function toResponseRequest(providerFromPath: ProviderId, body: ParsedBody) {
+  if (typeof body.model !== "string" || !isResponseInput(body.input)) {
+    throw new ProxyRequestError(400, "invalid_request", "Request body requires model and input.");
+  }
+
+  const toolChoice = toToolChoice(body.toolChoice);
+
+  return {
+    ...commonRequestFields(providerFromPath, body),
+    model: body.model,
+    input: body.input,
+    ...(typeof body.instructions === "string" ? { instructions: body.instructions } : {}),
+    ...(typeof body.previousResponseId === "string" ? { previousResponseId: body.previousResponseId } : {}),
+    ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
+    ...(typeof body.maxOutputTokens === "number" ? { maxOutputTokens: body.maxOutputTokens } : {}),
+    ...(Array.isArray(body.tools) ? { tools: body.tools } : {}),
+    ...(toolChoice !== undefined ? { toolChoice } : {}),
+  };
+}
+
+function commonRequestFields(providerFromPath: ProviderId, body: ParsedBody) {
   if (typeof body.baseUrl === "string") {
     assertLocalUrl(body.baseUrl);
   }
 
   return {
     provider: typeof body.provider === "string" ? body.provider : providerFromPath,
-    model: body.model,
-    messages: body.messages,
     ...(typeof body.baseUrl === "string" ? { baseUrl: body.baseUrl } : {}),
-    ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
-    ...(typeof body.maxTokens === "number" ? { maxTokens: body.maxTokens } : {}),
     ...(typeof body.timeoutMs === "number" ? { timeoutMs: body.timeoutMs } : {}),
+    ...(isRecord(body.metadata) ? { metadata: body.metadata } : {}),
+    ...(isRecord(body.rawOptions) ? { rawOptions: body.rawOptions } : {}),
   };
 }
 
 async function writeEventStream(
   response: ServerResponse,
-  events: AsyncIterable<ChatStreamEvent>,
+  events: AsyncIterable<ChatStreamEvent | ResponseStreamEvent>,
 ): Promise<void> {
   response.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -302,6 +404,55 @@ function serializeError(error: unknown): { code: string; message: string } {
   }
 
   return { code: "internal_error", message: String(error) };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEmbeddingInput(value: unknown): value is string | string[] | number[] | number[][] {
+  if (typeof value === "string") {
+    return true;
+  }
+
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  return value.every(
+    (item) =>
+      typeof item === "string" ||
+      typeof item === "number" ||
+      (Array.isArray(item) && item.every((token) => typeof token === "number")),
+  );
+}
+
+function isResponseInput(value: unknown): value is string | unknown[] {
+  return typeof value === "string" || Array.isArray(value);
+}
+
+function toToolChoice(value: unknown): string | Record<string, unknown> | undefined {
+  if (typeof value === "string" || isRecord(value)) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function toChatToolChoice(value: unknown): "auto" | "none" | "required" | Record<string, unknown> | undefined {
+  if (value === "auto" || value === "none" || value === "required" || isRecord(value)) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function toEmbeddingEncodingFormat(value: unknown): "float" | "base64" | undefined {
+  if (value === "float" || value === "base64") {
+    return value;
+  }
+
+  return undefined;
 }
 
 function setCorsHeaders(

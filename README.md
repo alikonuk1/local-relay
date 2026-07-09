@@ -2,11 +2,11 @@
 
 Local Relay is a TypeScript toolkit for connecting web frontends to local LLM runtimes such as Ollama, LM Studio, llama.cpp server, and other OpenAI-compatible local APIs.
 
-The goal is to provide the connector layer, not a full chat product. Apps should be able to detect local providers, list models, let users choose one, and stream responses with a consistent API.
+The goal is to provide the connector layer, not a full chat product. Apps should be able to detect local providers, list models, let users choose one, stream responses, create embeddings, pass tool definitions, send multimodal chat input, and use OpenAI-compatible Responses API endpoints with a consistent API.
 
 ## Packages
 
-- `@local-relay/core`: provider detection, model listing, chat, streaming, and normalized errors.
+- `@local-relay/core`: provider detection, model listing, chat, streaming, embeddings, Responses API helpers, and normalized errors.
 - `@local-relay/react`: React hooks and lightweight UI primitives.
 - `@local-relay/proxy`: optional localhost proxy for CORS and hosted app reliability.
 
@@ -55,6 +55,64 @@ for await (const event of client.streamChat({
   messages: [{ role: "user", content: "Write one sentence." }],
 })) {
   if (event.type === "token") {
+    console.log(event.text);
+  }
+}
+```
+
+## Advanced APIs
+
+OpenAI-compatible local providers can receive tool definitions, multimodal chat content, embeddings requests, and Responses API calls. Ollama native supports embeddings through `/api/embed` and image chat parts through Ollama's `images` message field.
+
+```ts
+const embedding = await client.embeddings({
+  provider: "ollama",
+  model: "nomic-embed-text",
+  input: "Local-first AI",
+});
+```
+
+```ts
+const response = await client.chat({
+  provider: "lmstudio",
+  model: "local-vision-or-tool-model",
+  messages: [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "What is in this image?" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,..." } },
+      ],
+    },
+  ],
+  tools: [
+    {
+      type: "function",
+      function: {
+        name: "lookupNote",
+        parameters: { type: "object", properties: { id: { type: "string" } } },
+      },
+    },
+  ],
+  toolChoice: "auto",
+});
+```
+
+```ts
+const created = await client.createResponse({
+  provider: "openai-compatible",
+  baseUrl: "http://localhost:8000/v1",
+  model: "local-responses-model",
+  input: "Write a one-line summary.",
+});
+
+for await (const event of client.streamResponse({
+  provider: "openai-compatible",
+  baseUrl: "http://localhost:8000/v1",
+  model: "local-responses-model",
+  input: "Stream a short answer.",
+})) {
+  if (event.type === "text-delta") {
     console.log(event.text);
   }
 }
@@ -120,6 +178,9 @@ Routes:
 - `GET /providers/:provider/models`
 - `POST /providers/:provider/chat`
 - `POST /providers/:provider/chat/stream`
+- `POST /providers/:provider/embeddings`
+- `POST /providers/:provider/responses`
+- `POST /providers/:provider/responses/stream`
 
 The proxy binds to `127.0.0.1` by default and refuses non-local provider URLs by default.
 

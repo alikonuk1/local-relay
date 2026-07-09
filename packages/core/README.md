@@ -26,6 +26,27 @@ const response = await client.chat({
 });
 ```
 
+## Advanced APIs
+
+```ts
+const embedding = await client.embeddings({
+  provider: "ollama",
+  model: "nomic-embed-text",
+  input: "Local-first AI",
+});
+```
+
+```ts
+const response = await client.createResponse({
+  provider: "openai-compatible",
+  baseUrl: "http://localhost:8000/v1",
+  model: "local-responses-model",
+  input: "Summarize this locally.",
+});
+```
+
+Chat requests also support OpenAI-compatible `tools`, `toolChoice`, `responseFormat`, and multimodal `content` parts.
+
 ## Proxy Client
 
 ```ts

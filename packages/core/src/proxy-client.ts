@@ -5,11 +5,17 @@ import type {
   ChatStreamEvent,
   ChatStreamRequest,
   CreateLocalRelayProxyClientOptions,
+  EmbeddingRequest,
+  EmbeddingResponse,
+  LocalRelayResponse,
   LocalRelayClient,
   LocalRelayModel,
   ProviderDetectionResult,
   ProviderId,
   ProviderRequestOptions,
+  ResponseRequest,
+  ResponseStreamEvent,
+  ResponseStreamRequest,
 } from "./types.js";
 import { joinUrl, normalizeBaseUrl } from "./utils.js";
 
@@ -125,6 +131,75 @@ export function createLocalRelayProxyClient(
         yield event;
       }
     },
+
+    embeddings(request) {
+      const provider = resolveProxyProvider(request);
+      return requestJson<{ response: EmbeddingResponse }>(
+        fetchImpl,
+        joinUrl(baseUrl, `/providers/${encodeURIComponent(provider)}/embeddings`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(createProxyEmbeddingBody(request)),
+          timeoutMs: request.timeoutMs ?? requestTimeoutMs,
+          ...(request.signal ? { signal: request.signal } : {}),
+        },
+      ).then((payload) => payload.response);
+    },
+
+    createResponse(request) {
+      const provider = resolveProxyProvider(request);
+      return requestJson<{ response: LocalRelayResponse }>(
+        fetchImpl,
+        joinUrl(baseUrl, `/providers/${encodeURIComponent(provider)}/responses`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(createProxyResponseBody(request)),
+          timeoutMs: request.timeoutMs ?? requestTimeoutMs,
+          ...(request.signal ? { signal: request.signal } : {}),
+        },
+      ).then((payload) => payload.response);
+    },
+
+    async *streamResponse(request: ResponseStreamRequest) {
+      const provider = resolveProxyProvider(request);
+      const response = await requestFetch(
+        fetchImpl,
+        joinUrl(baseUrl, `/providers/${encodeURIComponent(provider)}/responses/stream`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(createProxyResponseBody(request)),
+          timeoutMs: request.timeoutMs ?? requestTimeoutMs,
+          ...(request.signal ? { signal: request.signal } : {}),
+        },
+      );
+
+      if (!response.ok) {
+        throw await createProxyError(response);
+      }
+
+      if (!response.body) {
+        throw new LocalRelayError("Local Relay proxy did not return a streaming body.", {
+          code: "proxy_invalid_response",
+          endpoint: response.url,
+        });
+      }
+
+      for await (const payload of parseServerSentEvents(response.body)) {
+        const event = parseProxyPayload<ResponseStreamEvent>(payload, response.url);
+        if (event.type === "error") {
+          yield {
+            type: "error",
+            error: deserializeProxyError(event.error),
+          };
+          continue;
+        }
+
+        yield event;
+      }
+    },
   };
 }
 
@@ -149,7 +224,9 @@ async function listModelsForProvider(
   return response.models;
 }
 
-function resolveProxyProvider(request: ChatRequest | ChatStreamRequest): ProviderId {
+function resolveProxyProvider(
+  request: ChatRequest | ChatStreamRequest | EmbeddingRequest | ResponseRequest | ResponseStreamRequest,
+): ProviderId {
   const provider = request.provider ?? (request.baseUrl ? "openai-compatible" : undefined);
   if (!provider) {
     throw new ProviderUnavailableError("A provider is required when using the Local Relay proxy client.", {
@@ -168,7 +245,44 @@ function createProxyChatBody(request: ChatRequest | ChatStreamRequest): Record<s
     ...(request.baseUrl ? { baseUrl: request.baseUrl } : {}),
     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     ...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
+    ...(request.tools !== undefined ? { tools: request.tools } : {}),
+    ...(request.toolChoice !== undefined ? { toolChoice: request.toolChoice } : {}),
+    ...(request.responseFormat !== undefined ? { responseFormat: request.responseFormat } : {}),
     ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+    ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+    ...(request.rawOptions !== undefined ? { rawOptions: request.rawOptions } : {}),
+  };
+}
+
+function createProxyEmbeddingBody(request: EmbeddingRequest): Record<string, unknown> {
+  return {
+    model: request.model,
+    input: request.input,
+    ...(request.provider ? { provider: request.provider } : {}),
+    ...(request.baseUrl ? { baseUrl: request.baseUrl } : {}),
+    ...(request.dimensions !== undefined ? { dimensions: request.dimensions } : {}),
+    ...(request.encodingFormat !== undefined ? { encodingFormat: request.encodingFormat } : {}),
+    ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+    ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+    ...(request.rawOptions !== undefined ? { rawOptions: request.rawOptions } : {}),
+  };
+}
+
+function createProxyResponseBody(request: ResponseRequest | ResponseStreamRequest): Record<string, unknown> {
+  return {
+    model: request.model,
+    input: request.input,
+    ...(request.provider ? { provider: request.provider } : {}),
+    ...(request.baseUrl ? { baseUrl: request.baseUrl } : {}),
+    ...(request.instructions !== undefined ? { instructions: request.instructions } : {}),
+    ...(request.previousResponseId !== undefined ? { previousResponseId: request.previousResponseId } : {}),
+    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.maxOutputTokens !== undefined ? { maxOutputTokens: request.maxOutputTokens } : {}),
+    ...(request.tools !== undefined ? { tools: request.tools } : {}),
+    ...(request.toolChoice !== undefined ? { toolChoice: request.toolChoice } : {}),
+    ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+    ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+    ...(request.rawOptions !== undefined ? { rawOptions: request.rawOptions } : {}),
   };
 }
 
