@@ -10,9 +10,9 @@ Ollama, LM Studio, and other local runtimes may reject browser requests from a d
 
 Hosted HTTPS apps may have trouble calling plain HTTP localhost endpoints. Browser behavior varies by context, browser, and policy settings.
 
-The long-term mitigation is an optional local proxy that exposes a stable localhost endpoint and forwards only to allowed local providers.
+The recommended mitigation is the optional local proxy. It exposes a stable localhost endpoint and forwards only to allowed local providers.
 
-See [proxy.md](./proxy.md) for the current proxy prototype.
+See [proxy.md](./proxy.md) for proxy setup and the browser-safe proxy client.
 
 ## Localhost Probing
 
@@ -26,7 +26,7 @@ Default provider URLs:
 
 ## Security Defaults
 
-Local Relay should:
+Local Relay defaults are designed to:
 
 - Avoid telemetry by default.
 - Avoid prompt logging by default.

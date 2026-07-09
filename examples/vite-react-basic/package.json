@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -p tsconfig.json && vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "build": "npm run build -w @local-relay/react && tsc -p tsconfig.json && vite build",
+    "typecheck": "npm run build -w @local-relay/react && tsc --noEmit",
+    "lint": "npm run build -w @local-relay/react && tsc --noEmit"
   },
   "dependencies": {
-    "@local-relay/core": "0.0.0",
-    "@local-relay/react": "0.0.0",
+    "@local-relay/core": "0.1.0",
+    "@local-relay/react": "0.1.0",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.0.5",
     "react": "^18.3.1",

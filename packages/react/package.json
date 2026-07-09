@@ -1,8 +1,33 @@
 {
   "name": "@local-relay/react",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React hooks and lightweight UI primitives for Local Relay.",
   "type": "module",
+  "license": "MIT",
+  "author": "alikonuk1 <alikonuk1@protonmail.com>",
+  "homepage": "https://github.com/alikonuk1/local-relay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alikonuk1/local-relay.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/alikonuk1/local-relay/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "local-ai",
+    "llm",
+    "ollama",
+    "lm-studio",
+    "openai-compatible",
+    "react"
+  ],
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -22,7 +47,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@local-relay/core": "0.0.0"
+    "@local-relay/core": "0.1.0"
   },
   "peerDependencies": {
     "react": ">=18.2.0"

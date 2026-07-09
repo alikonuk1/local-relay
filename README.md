@@ -4,7 +4,7 @@ Local Relay is a TypeScript toolkit for connecting web frontends to local LLM ru
 
 The goal is to provide the connector layer, not a full chat product. Apps should be able to detect local providers, list models, let users choose one, and stream responses with a consistent API.
 
-## Planned Packages
+## Packages
 
 - `@local-relay/core`: provider detection, model listing, chat, streaming, and normalized errors.
 - `@local-relay/react`: React hooks and lightweight UI primitives.
@@ -12,9 +12,22 @@ The goal is to provide the connector layer, not a full chat product. Apps should
 
 ## Current Status
 
-Early scaffold. The first implementation slice is focused on `@local-relay/core`.
+Alpha-ready local development build. The core, React, proxy, docs, and Vite example are implemented, but the public API should still be treated as pre-1.0 and subject to change.
 
-## Current Core API
+## Install
+
+```bash
+npm install @local-relay/core
+```
+
+Optional packages:
+
+```bash
+npm install @local-relay/react
+npm install @local-relay/proxy
+```
+
+## Quick Start
 
 ```ts
 import { createLocalRelayClient } from "@local-relay/core";
@@ -24,10 +37,10 @@ const client = createLocalRelayClient({
 });
 
 const detection = await client.detectProviders();
-const models = await client.listModels({ provider: "lmstudio" });
+const models = await client.listModels({ provider: "ollama" });
 
 const response = await client.chat({
-  provider: "lmstudio",
+  provider: "ollama",
   model: models[0].id,
   messages: [{ role: "user", content: "Say hello from a local model." }],
 });
@@ -45,6 +58,24 @@ for await (const event of client.streamChat({
     console.log(event.text);
   }
 }
+```
+
+## Proxy Client
+
+When browser-to-provider calls are blocked by CORS or deployment policy, run the optional proxy and use the proxy client with the same core API shape:
+
+```bash
+npx @local-relay/proxy
+```
+
+```ts
+import { createLocalRelayProxyClient } from "@local-relay/core";
+
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
+});
+
+const models = await client.listModels({ provider: "ollama" });
 ```
 
 ## React Helpers
@@ -73,7 +104,7 @@ function LocalModelPicker() {
 The proxy is useful when a browser app needs a stable localhost endpoint instead of calling Ollama or LM Studio directly.
 
 ```bash
-npx local-relay-proxy
+npx @local-relay/proxy
 ```
 
 Default URL:
@@ -92,6 +123,17 @@ Routes:
 
 The proxy binds to `127.0.0.1` by default and refuses non-local provider URLs by default.
 
+## Example App
+
+Run the Vite React example locally:
+
+```bash
+npm install
+npm run dev --workspace @local-relay/example-vite-react-basic
+```
+
+The example includes provider detection, model selection, direct Ollama calls, a diagnostics panel, and incremental streaming in a ChatGPT-style local chat UI.
+
 ## Development
 
 ```bash
@@ -101,15 +143,17 @@ npm test
 npm run build
 ```
 
-The package currently typechecks with TypeScript directly:
+The packages build with TypeScript directly and tests use Node's built-in test runner.
+
+Optional real-provider tests:
 
 ```bash
-tsc -p packages/core/tsconfig.json --noEmit
+LOCAL_RELAY_TEST_OLLAMA=1 npm test --workspace @local-relay/core
+LOCAL_RELAY_TEST_LMSTUDIO=1 npm test --workspace @local-relay/core
 ```
 
 ## Docs
 
-- [Handover / next-session notes](./handover.md)
 - [Getting started](./docs/getting-started.md)
 - [Provider guides](./docs/providers.md)
 - [Browser limitations](./docs/browser-limitations.md)
@@ -117,5 +161,7 @@ tsc -p packages/core/tsconfig.json --noEmit
 - [Proxy](./docs/proxy.md)
 - [Error handling](./docs/error-handling.md)
 - [Security](./docs/security.md)
+- [API stability notes](./docs/api-review.md)
 - [Integration tests](./docs/integration-tests.md)
-- [Publishing prep](./docs/publishing.md)
+- [Publishing](./docs/publishing.md)
+- [Release notes](./docs/release-notes.md)

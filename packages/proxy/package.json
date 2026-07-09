@@ -1,8 +1,33 @@
 {
   "name": "@local-relay/proxy",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Optional localhost proxy for Local Relay browser integrations.",
   "type": "module",
+  "license": "MIT",
+  "author": "alikonuk1 <alikonuk1@protonmail.com>",
+  "homepage": "https://github.com/alikonuk1/local-relay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alikonuk1/local-relay.git",
+    "directory": "packages/proxy"
+  },
+  "bugs": {
+    "url": "https://github.com/alikonuk1/local-relay/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "local-ai",
+    "llm",
+    "ollama",
+    "lm-studio",
+    "localhost-proxy",
+    "cors"
+  ],
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -26,7 +51,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@local-relay/core": "0.0.0"
+    "@local-relay/core": "0.1.0"
   },
   "devDependencies": {}
 }

@@ -70,6 +70,7 @@ export interface ChatRequest {
   stream?: false;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }
@@ -123,6 +124,14 @@ export interface ProviderConfig {
 export interface CreateLocalRelayClientOptions {
   providers?: Array<BuiltInProviderId | ProviderConfig>;
   timeoutMs?: number;
+  requestTimeoutMs?: number;
+  fetch?: typeof fetch;
+}
+
+export interface CreateLocalRelayProxyClientOptions {
+  baseUrl?: string;
+  timeoutMs?: number;
+  requestTimeoutMs?: number;
   fetch?: typeof fetch;
 }
 

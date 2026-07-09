@@ -29,7 +29,7 @@ export async function withTimeout<T>(
   try {
     return await operation(controller.signal);
   } catch (error) {
-    if (isAbortError(error) && !externalSignal?.aborted) {
+    if ((isAbortError(error) || controller.signal.aborted) && !externalSignal?.aborted) {
       throw new ProviderTimeoutError("Local provider request timed out.", {
         ...timeoutDetails,
         cause: error,

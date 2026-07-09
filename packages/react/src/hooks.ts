@@ -2,17 +2,19 @@ import { useCallback, useMemo, useState } from "react";
 import type {
   ChatMessage,
   ChatStreamEvent,
+  DetectOptions,
   LocalRelayClient,
   LocalRelayModel,
   ProviderDetectionResult,
   ProviderId,
+  ProviderRequestOptions,
 } from "@local-relay/core";
 
 export interface UseProviderDetectionResult {
   providers: ProviderDetectionResult[];
   isDetecting: boolean;
   error: Error | null;
-  detect: () => Promise<ProviderDetectionResult[]>;
+  detect: (options?: DetectOptions) => Promise<ProviderDetectionResult[]>;
 }
 
 export function useProviderDetection(client: LocalRelayClient): UseProviderDetectionResult {
@@ -20,12 +22,12 @@ export function useProviderDetection(client: LocalRelayClient): UseProviderDetec
   const [isDetecting, setIsDetecting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const detect = useCallback(async () => {
+  const detect = useCallback(async (options?: DetectOptions) => {
     setIsDetecting(true);
     setError(null);
 
     try {
-      const result = await client.detectProviders();
+      const result = await client.detectProviders(options);
       setProviders(result);
       return result;
     } catch (caught) {
@@ -50,7 +52,7 @@ export interface UseLocalModelsResult {
   selectedModelId: string;
   isLoading: boolean;
   error: Error | null;
-  loadModels: () => Promise<LocalRelayModel[]>;
+  loadModels: (requestOptions?: ProviderRequestOptions) => Promise<LocalRelayModel[]>;
   setSelectedModelId: (modelId: string) => void;
   selectedModel: LocalRelayModel | null;
 }
@@ -64,14 +66,15 @@ export function useLocalModels(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const loadModels = useCallback(async () => {
+  const loadModels = useCallback(async (requestOptions: ProviderRequestOptions = {}) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const result = await client.listModels(
-        options.provider ? { provider: options.provider } : undefined,
-      );
+      const result = await client.listModels({
+        ...requestOptions,
+        ...(options.provider ? { provider: options.provider } : {}),
+      });
       setModels(result);
       setSelectedModelId((current) => current || result[0]?.id || "");
       return result;

@@ -1,13 +1,21 @@
 # Getting Started
 
-Local Relay is currently focused on the core TypeScript connector layer.
+Local Relay is currently an alpha TypeScript toolkit for connecting web apps to local LLM runtimes. The core, React helpers, proxy, and Vite example are implemented, but the public API is still pre-1.0.
 
 ## Install
 
-Package publishing is not set up yet. During local development, use the monorepo workspace package:
+During local development, install the workspace dependencies from the repository root:
 
 ```bash
 npm install
+```
+
+When using the published packages, install only what your app needs:
+
+```bash
+npm install @local-relay/core
+npm install @local-relay/react
+npm install @local-relay/proxy
 ```
 
 ## Connect To LM Studio
@@ -33,6 +41,22 @@ const result = await client.chat({
 });
 
 console.log(result.content);
+```
+
+Provider detection uses a short default timeout so missing local servers fail quickly. Chat and streaming requests use a longer default timeout for local model generation. You can override generation timeout globally or per request:
+
+```ts
+const client = createLocalRelayClient({
+  providers: ["ollama"],
+  requestTimeoutMs: 120000,
+});
+
+await client.chat({
+  provider: "ollama",
+  model: "llama3.2",
+  messages: [{ role: "user", content: "Write a short note." }],
+  timeoutMs: 120000,
+});
 ```
 
 The default LM Studio OpenAI-compatible base URL is:
@@ -85,4 +109,22 @@ const client = createLocalRelayClient({
 
 Direct browser calls to localhost providers can fail because of CORS, mixed-content rules, or local network restrictions. Local Relay should detect and report these failures clearly, but it should not bypass browser security.
 
-For production hosted apps, use the experimental `@local-relay/proxy` package as a local companion/proxy option.
+For hosted apps or browsers that cannot call local providers directly, use `@local-relay/proxy` as a local companion process.
+
+```bash
+npx @local-relay/proxy
+```
+
+```ts
+import { createLocalRelayProxyClient } from "@local-relay/core";
+
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
+});
+
+const result = await client.chat({
+  provider: "ollama",
+  model: "llama3.2",
+  messages: [{ role: "user", content: "Hello through the proxy." }],
+});
+```

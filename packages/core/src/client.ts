@@ -20,6 +20,7 @@ import type {
 import { normalizeBaseUrl } from "./utils.js";
 
 const DEFAULT_TIMEOUT_MS = 1500;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
 
 const BUILT_IN_ADAPTERS: Record<BuiltInProviderId, ProviderAdapter> = {
   ollama: createOllamaNativeAdapter(),
@@ -43,12 +44,13 @@ const BUILT_IN_ADAPTERS: Record<BuiltInProviderId, ProviderAdapter> = {
 export function createLocalRelayClient(
   options: CreateLocalRelayClientOptions = {},
 ): LocalRelayClient {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const fetchImpl = options.fetch ?? globalThis.fetch?.bind(globalThis);
   if (!fetchImpl) {
     throw new Error("Local Relay requires a fetch implementation.");
   }
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const requestTimeoutMs = options.requestTimeoutMs ?? options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const registrations = createProviderRegistrations(options.providers);
 
   return {
@@ -95,7 +97,7 @@ export function createLocalRelayClient(
         provider: target.provider,
         request,
         fetch: fetchImpl,
-        timeoutMs,
+        timeoutMs: request.timeoutMs ?? requestTimeoutMs,
         ...(request.signal ? { signal: request.signal } : {}),
       });
     },
@@ -106,7 +108,7 @@ export function createLocalRelayClient(
         provider: target.provider,
         request,
         fetch: fetchImpl,
-        timeoutMs,
+        timeoutMs: request.timeoutMs ?? requestTimeoutMs,
         ...(request.signal ? { signal: request.signal } : {}),
       });
     },

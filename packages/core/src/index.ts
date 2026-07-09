@@ -1,4 +1,5 @@
 export { createLocalRelayClient } from "./client.js";
+export { createLocalRelayProxyClient } from "./proxy-client.js";
 export {
   LocalRelayError,
   ProviderBlockedError,
@@ -19,6 +20,7 @@ export type {
   ChatStreamEvent,
   ChatStreamRequest,
   CreateLocalRelayClientOptions,
+  CreateLocalRelayProxyClientOptions,
   DetectOptions,
   LocalRelayClient,
   LocalRelayModel,

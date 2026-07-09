@@ -41,6 +41,7 @@ interface ParsedBody {
   baseUrl?: unknown;
   temperature?: unknown;
   maxTokens?: unknown;
+  timeoutMs?: unknown;
 }
 
 export function createLocalRelayProxy(options: LocalRelayProxyOptions = {}): LocalRelayProxy {
@@ -215,6 +216,7 @@ function toChatRequest(providerFromPath: ProviderId, body: ParsedBody) {
     ...(typeof body.baseUrl === "string" ? { baseUrl: body.baseUrl } : {}),
     ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
     ...(typeof body.maxTokens === "number" ? { maxTokens: body.maxTokens } : {}),
+    ...(typeof body.timeoutMs === "number" ? { timeoutMs: body.timeoutMs } : {}),
   };
 }
 

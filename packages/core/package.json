@@ -1,8 +1,33 @@
 {
   "name": "@local-relay/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Core TypeScript client for connecting web apps to local LLM providers.",
   "type": "module",
+  "license": "MIT",
+  "author": "alikonuk1 <alikonuk1@protonmail.com>",
+  "homepage": "https://github.com/alikonuk1/local-relay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alikonuk1/local-relay.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/alikonuk1/local-relay/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "local-ai",
+    "llm",
+    "ollama",
+    "lm-studio",
+    "openai-compatible",
+    "typescript"
+  ],
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",

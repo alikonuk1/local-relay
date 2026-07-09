@@ -70,7 +70,6 @@ export function createOllamaNativeAdapter(): ProviderAdapter {
       try {
         await requestJson<unknown>(options, joinUrl(options.provider.baseUrl, "/api/version"), {
           method: "GET",
-          headers: { Accept: "application/json" },
         });
 
         return {
@@ -99,7 +98,6 @@ async function listOllamaModels(options: AdapterRequestOptions): Promise<LocalRe
 
   const tags = await requestJson<OllamaTagsResponse>(options, tagsEndpoint, {
     method: "GET",
-    headers: { Accept: "application/json" },
   });
 
   if (!Array.isArray(tags.models)) {
@@ -115,7 +113,6 @@ async function listOllamaModels(options: AdapterRequestOptions): Promise<LocalRe
   try {
     const ps = await requestJson<OllamaPsResponse>(options, psEndpoint, {
       method: "GET",
-      headers: { Accept: "application/json" },
     });
 
     if (Array.isArray(ps.models)) {
@@ -216,7 +213,7 @@ async function* streamChatWithOllama(
         baseUrl: options.provider.baseUrl,
         endpoint,
         cause: error,
-        suggestion: "Try using the future Local Relay proxy or configure Ollama CORS settings.",
+        suggestion: "Try using the Local Relay proxy or configure Ollama CORS settings.",
       });
     }
 
@@ -312,7 +309,7 @@ async function requestJson<T>(
         baseUrl: options.provider.baseUrl,
         endpoint,
         cause: error,
-        suggestion: "Try using the future Local Relay proxy or configure Ollama CORS settings.",
+        suggestion: "Try using the Local Relay proxy or configure Ollama CORS settings.",
       });
     }
 

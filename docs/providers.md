@@ -101,3 +101,15 @@ const client = createLocalRelayClient({
 - Prefer `lmstudio` for LM Studio's local server.
 - Prefer `openai-compatible` for custom local runtimes.
 - Use `ollama-openai` when you specifically want Ollama through `/v1`.
+
+## Timeouts
+
+Provider detection and model listing use short timeouts by default so unavailable local servers fail quickly. Chat and streaming requests use longer defaults because local model generation can take longer, especially on first load.
+
+```ts
+const client = createLocalRelayClient({
+  providers: ["ollama"],
+  timeoutMs: 3000,
+  requestTimeoutMs: 120000,
+});
+```

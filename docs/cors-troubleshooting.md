@@ -20,10 +20,18 @@ In Local Relay, these failures usually surface as `ProviderCorsError`, `Provider
 Run:
 
 ```bash
-npx local-relay-proxy
+npx @local-relay/proxy
 ```
 
-Then point the web app at the proxy endpoints instead of calling Ollama or LM Studio directly.
+Then use the proxy client from `@local-relay/core`:
+
+```ts
+import { createLocalRelayProxyClient } from "@local-relay/core";
+
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
+});
+```
 
 ### Check Provider Server State
 
@@ -59,4 +67,4 @@ Rejected examples:
 - Confirm the provider server is running.
 - Confirm the provider URL works with `curl`.
 - Confirm the browser app uses the right provider id.
-- Use `@local-relay/proxy` if direct browser requests fail.
+- Use `@local-relay/proxy` and `createLocalRelayProxyClient` if direct browser requests fail.

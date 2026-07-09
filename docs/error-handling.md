@@ -42,8 +42,11 @@ Local Relay errors can include:
 - `endpoint`
 - `status`
 - `suggestion`
+- `cause`
 
 Use `suggestion` for user-facing recovery hints where available.
+
+Proxy-client errors use `LocalRelayError` with proxy-specific codes such as `proxy_timeout`, `proxy_request_failed`, `proxy_error`, or `proxy_invalid_response`.
 
 ## UI Guidance
 
