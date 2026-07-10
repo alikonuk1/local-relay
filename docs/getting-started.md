@@ -17,6 +17,12 @@ npm install @local-relay/react
 npm install @local-relay/proxy
 ```
 
+Package pages:
+
+- [`@local-relay/core`](https://www.npmjs.com/package/@local-relay/core)
+- [`@local-relay/react`](https://www.npmjs.com/package/@local-relay/react)
+- [`@local-relay/proxy`](https://www.npmjs.com/package/@local-relay/proxy)
+
 ## Choose A Provider
 
 Local Relay includes built-in provider IDs for common local runtimes:

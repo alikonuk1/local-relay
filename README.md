@@ -1,5 +1,9 @@
 # Local Relay
 
+[![core](https://img.shields.io/npm/v/@local-relay/core?label=%40local-relay%2Fcore)](https://www.npmjs.com/package/@local-relay/core)
+[![react](https://img.shields.io/npm/v/@local-relay/react?label=%40local-relay%2Freact)](https://www.npmjs.com/package/@local-relay/react)
+[![proxy](https://img.shields.io/npm/v/@local-relay/proxy?label=%40local-relay%2Fproxy)](https://www.npmjs.com/package/@local-relay/proxy)
+
 Local Relay helps web apps connect to local LLM runtimes such as Ollama, LM Studio, llama.cpp server, vLLM, LocalAI, and other OpenAI-compatible local APIs.
 
 It gives your app one TypeScript interface for common local-model workflows:
@@ -16,9 +20,9 @@ Local Relay is a connector library, not a full chat application.
 
 ## Packages
 
-- `@local-relay/core`: provider clients, model listing, chat, streaming, embeddings, Responses API helpers, proxy client, and normalized errors.
-- `@local-relay/react`: React hooks and small UI primitives for provider/model selection and streaming chat.
-- `@local-relay/proxy`: a localhost companion process for browser apps that cannot call local providers directly.
+- [`@local-relay/core`](https://www.npmjs.com/package/@local-relay/core): provider clients, model listing, chat, streaming, embeddings, Responses API helpers, proxy client, and normalized errors.
+- [`@local-relay/react`](https://www.npmjs.com/package/@local-relay/react): React hooks and small UI primitives for provider/model selection and streaming chat.
+- [`@local-relay/proxy`](https://www.npmjs.com/package/@local-relay/proxy): a localhost companion process for browser apps that cannot call local providers directly.
 
 ## Install
 
