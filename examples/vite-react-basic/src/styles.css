@@ -170,6 +170,30 @@ label {
   border-color: #10a37f;
 }
 
+.segmented-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #3f3f3f;
+  border-radius: 10px;
+  background: #171717;
+}
+
+.segmented-control button {
+  min-height: 30px;
+  border-radius: 7px;
+  color: #b4b4b4;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.segmented-control button[data-active="true"] {
+  color: #ececec;
+  background: #343541;
+}
+
 .button-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

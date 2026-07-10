@@ -1,29 +1,43 @@
 # CORS Troubleshooting
 
-Direct browser calls to local LLM runtimes can fail even when the runtime is healthy.
-
-Common causes:
-
-- The local provider does not allow the web app's origin.
-- A hosted HTTPS app is trying to reach a local HTTP URL.
-- The browser blocks or restricts localhost access from the current context.
-- A provider is running, but its API server is disabled.
+If a local provider works with `curl` but fails from your browser app, the provider is probably not allowing the browser origin. This is common with local AI runtimes.
 
 ## Symptoms
 
-In Local Relay, these failures usually surface as `ProviderCorsError`, `ProviderUnavailableError`, or `ProviderTimeoutError`.
+Your app may see one of these Local Relay errors:
 
-## Recommended Fixes
+- `ProviderCorsError`
+- `ProviderUnavailableError`
+- `ProviderTimeoutError`
 
-### Use The Proxy
+The browser console may also show a CORS or network error for a localhost URL.
 
-Run:
+## Check The Provider
+
+Ollama:
 
 ```bash
-npx @local-relay/proxy
+curl http://localhost:11434/api/version
+curl http://localhost:11434/api/tags
 ```
 
-Then use the proxy client from `@local-relay/core`:
+LM Studio:
+
+```bash
+curl http://localhost:1234/v1/models
+```
+
+If the command fails, start the provider or load a model before debugging CORS.
+
+## Use The Local Relay Proxy
+
+Start the proxy:
+
+```bash
+npx @local-relay/proxy --allowed-origin http://localhost:5173
+```
+
+Use the proxy client:
 
 ```ts
 import { createLocalRelayProxyClient } from "@local-relay/core";
@@ -31,25 +45,15 @@ import { createLocalRelayProxyClient } from "@local-relay/core";
 const client = createLocalRelayProxyClient({
   baseUrl: "http://127.0.0.1:44114",
 });
+
+const models = await client.listModels({ provider: "lmstudio" });
 ```
 
-### Check Provider Server State
+Use your production app origin with `--allowed-origin` when deploying a hosted integration.
 
-For Ollama:
+## Keep Provider URLs Local
 
-```bash
-curl http://localhost:11434/api/version
-```
-
-For LM Studio:
-
-```bash
-curl http://localhost:1234/v1/models
-```
-
-### Keep Provider URLs Local
-
-Local Relay's proxy refuses non-local provider URLs by default. This is intentional.
+The proxy only forwards to local provider URLs by default.
 
 Allowed examples:
 
@@ -62,9 +66,10 @@ Rejected examples:
 - `https://example.com/v1`
 - `http://192.168.1.25:11434`
 
-## Development Checklist
+## Browser Checklist
 
-- Confirm the provider server is running.
-- Confirm the provider URL works with `curl`.
-- Confirm the browser app uses the right provider id.
-- Use `@local-relay/proxy` and `createLocalRelayProxyClient` if direct browser requests fail.
+- Confirm the provider API works with `curl`.
+- Confirm your app uses the right provider ID.
+- Prefer `createLocalRelayProxyClient` for hosted browser apps.
+- Use `--allowed-origin` for the exact app origin you want to allow.
+- Show the normalized Local Relay error `suggestion` in setup screens where possible.

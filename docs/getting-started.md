@@ -1,53 +1,106 @@
 # Getting Started
 
-Local Relay is currently an alpha TypeScript toolkit for connecting web apps to local LLM runtimes. The core, React helpers, proxy, and Vite example are implemented, but the public API is still pre-1.0.
+Use Local Relay when your web app needs to talk to local LLM runtimes with one consistent TypeScript API.
 
 ## Install
 
-During local development, install the workspace dependencies from the repository root:
-
-```bash
-npm install
-```
-
-When using the published packages, install only what your app needs:
+Install the core package:
 
 ```bash
 npm install @local-relay/core
+```
+
+Add React helpers or the browser proxy only if your app needs them:
+
+```bash
 npm install @local-relay/react
 npm install @local-relay/proxy
 ```
 
-## Connect To LM Studio
+## Choose A Provider
 
-1. Open LM Studio.
-2. Go to the Developer area.
-3. Start the local server.
-4. Use Local Relay with the `lmstudio` provider.
+Local Relay includes built-in provider IDs for common local runtimes:
+
+- `ollama`
+- `ollama-openai`
+- `lmstudio`
+- `openai-compatible`
 
 ```ts
 import { createLocalRelayClient } from "@local-relay/core";
 
 const client = createLocalRelayClient({
-  providers: ["lmstudio"],
+  providers: ["ollama", "lmstudio"],
 });
-
-const models = await client.listModels();
-
-const result = await client.chat({
-  provider: "lmstudio",
-  model: models[0].id,
-  messages: [{ role: "user", content: "Hello from LM Studio." }],
-});
-
-console.log(result.content);
 ```
 
-Provider detection uses a short default timeout so missing local servers fail quickly. Chat and streaming requests use a longer default timeout for local model generation. You can override generation timeout globally or per request:
+## Detect Providers
+
+Provider detection lets your app show users which local runtimes are currently reachable.
+
+```ts
+const providers = await client.detectProviders();
+
+for (const result of providers) {
+  console.log(result.provider.id, result.provider.status);
+}
+```
+
+Statuses are normalized as `available`, `unavailable`, `blocked`, or `unknown`.
+
+## List Models
+
+```ts
+const models = await client.listModels({ provider: "lmstudio" });
+const selectedModel = models[0];
+```
+
+For LM Studio, make sure the local server is running from the Developer area and a chat model is loaded. The default URL is:
+
+```txt
+http://localhost:1234/v1
+```
+
+For Ollama, make sure Ollama is running and at least one model is installed. The default URL is:
+
+```txt
+http://localhost:11434
+```
+
+## Send A Chat Request
+
+```ts
+const response = await client.chat({
+  provider: "lmstudio",
+  model: selectedModel.id,
+  messages: [{ role: "user", content: "Explain local inference in one sentence." }],
+});
+
+console.log(response.content);
+```
+
+## Stream A Response
+
+```ts
+for await (const event of client.streamChat({
+  provider: "lmstudio",
+  model: selectedModel.id,
+  messages: [{ role: "user", content: "Write a short welcome message." }],
+})) {
+  if (event.type === "token") {
+    appendToTranscript(event.text);
+  }
+}
+```
+
+## Adjust Timeouts
+
+Provider detection and model listing use short timeouts so unavailable local servers fail quickly. Chat and streaming requests use a longer timeout because local model generation can take longer.
 
 ```ts
 const client = createLocalRelayClient({
   providers: ["ollama"],
+  timeoutMs: 3000,
   requestTimeoutMs: 120000,
 });
 
@@ -59,55 +112,33 @@ await client.chat({
 });
 ```
 
-The default LM Studio OpenAI-compatible base URL is:
+## Use The Browser Proxy
 
-```txt
-http://localhost:1234/v1
+Direct browser calls to local providers can fail because of CORS or browser policy. Use the Local Relay proxy when your browser app cannot call Ollama or LM Studio directly.
+
+Start the proxy on the user's machine:
+
+```bash
+npx @local-relay/proxy --allowed-origin http://localhost:5173
 ```
 
-## Connect To Ollama
-
-Local Relay uses Ollama's native API by default so it can read richer model metadata and loaded-model state.
+Use the proxy client in your app:
 
 ```ts
-const client = createLocalRelayClient({
-  providers: ["ollama"],
+import { createLocalRelayProxyClient } from "@local-relay/core";
+
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
 });
 
-const models = await client.listModels();
+const models = await client.listModels({ provider: "lmstudio" });
 ```
 
-The default Ollama base URL is:
+The proxy supports the same client methods for model listing, chat, streaming chat, embeddings, and Responses API calls.
 
-```txt
-http://localhost:11434
-```
+## Advanced Local APIs
 
-If you want to use Ollama's OpenAI-compatible route instead, use the `ollama-openai` provider:
-
-```ts
-const client = createLocalRelayClient({
-  providers: ["ollama-openai"],
-});
-```
-
-## Custom OpenAI-Compatible Endpoint
-
-```ts
-const client = createLocalRelayClient({
-  providers: [
-    {
-      id: "openai-compatible",
-      name: "Local vLLM",
-      baseUrl: "http://localhost:8000/v1",
-    },
-  ],
-});
-```
-
-## Embeddings, Tools, Multimodal, And Responses
-
-Local Relay exposes advanced local-provider features through the same direct or proxy client interface.
+Embeddings:
 
 ```ts
 const embedding = await client.embeddings({
@@ -117,31 +148,7 @@ const embedding = await client.embeddings({
 });
 ```
 
-```ts
-const chat = await client.chat({
-  provider: "lmstudio",
-  model: "local-tool-or-vision-model",
-  messages: [
-    {
-      role: "user",
-      content: [
-        { type: "text", text: "Describe this image." },
-        { type: "image_url", image_url: { url: "data:image/png;base64,..." } },
-      ],
-    },
-  ],
-  tools: [
-    {
-      type: "function",
-      function: {
-        name: "lookupNote",
-        parameters: { type: "object", properties: { id: { type: "string" } } },
-      },
-    },
-  ],
-  toolChoice: "auto",
-});
-```
+Responses API on a local OpenAI-compatible server:
 
 ```ts
 const response = await client.createResponse({
@@ -152,28 +159,4 @@ const response = await client.createResponse({
 });
 ```
 
-Provider support is runtime-dependent. OpenAI-compatible endpoints receive OpenAI-shaped request bodies. Ollama native supports embeddings and image chat parts directly, while Responses API calls require an OpenAI-compatible `/v1/responses` endpoint.
-
-## Browser Limitations
-
-Direct browser calls to localhost providers can fail because of CORS, mixed-content rules, or local network restrictions. Local Relay should detect and report these failures clearly, but it should not bypass browser security.
-
-For hosted apps or browsers that cannot call local providers directly, use `@local-relay/proxy` as a local companion process.
-
-```bash
-npx @local-relay/proxy
-```
-
-```ts
-import { createLocalRelayProxyClient } from "@local-relay/core";
-
-const client = createLocalRelayProxyClient({
-  baseUrl: "http://127.0.0.1:44114",
-});
-
-const result = await client.chat({
-  provider: "ollama",
-  model: "llama3.2",
-  messages: [{ role: "user", content: "Hello through the proxy." }],
-});
-```
+Tools and multimodal chat content are passed through to OpenAI-compatible providers. Actual behavior depends on the local runtime and model.

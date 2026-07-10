@@ -1,8 +1,6 @@
 # Integration Tests
 
-Local Relay includes optional integration tests for real local providers.
-
-These tests are skipped by default because they require local runtimes to be installed, running, and configured with at least one model.
+Local Relay includes optional integration tests for real local providers. These tests are skipped by default because they require local runtimes to be installed, running, and configured with at least one model.
 
 ## Ollama
 
@@ -24,7 +22,7 @@ Requirements:
 
 - LM Studio is installed.
 - The local server is running.
-- At least one model is available from `GET /v1/models`.
+- At least one chat model is available from `GET /v1/models`.
 
 Run:
 

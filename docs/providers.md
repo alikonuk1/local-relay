@@ -1,10 +1,10 @@
 # Provider Guides
 
-Local Relay currently supports Ollama, Ollama's OpenAI-compatible API, LM Studio, and generic OpenAI-compatible local endpoints.
+Local Relay supports Ollama, LM Studio, and OpenAI-compatible local servers through built-in provider IDs.
 
-## Ollama Native
+## Ollama
 
-Provider id:
+Provider ID:
 
 ```txt
 ollama
@@ -16,25 +16,31 @@ Default base URL:
 http://localhost:11434
 ```
 
-Used endpoints:
-
-- `GET /api/version`
-- `GET /api/tags`
-- `GET /api/ps`
-- `POST /api/chat`
-- `POST /api/embed`
-
-Use this provider when you want Ollama-specific metadata such as loaded model state, family, parameter size, and quantization where available. Ollama native also supports Local Relay embeddings through `/api/embed` and converts multimodal chat image parts into Ollama's `images` message field.
+Use this provider for Ollama's native API. It can expose Ollama-specific model metadata such as family, parameter size, quantization, and loaded-model state when Ollama returns that data.
 
 ```ts
+import { createLocalRelayClient } from "@local-relay/core";
+
 const client = createLocalRelayClient({
   providers: ["ollama"],
 });
+
+const models = await client.listModels({ provider: "ollama" });
 ```
+
+Supported Local Relay methods:
+
+- `detectProviders`
+- `listModels`
+- `chat`
+- `streamChat`
+- `embeddings`
+
+Ollama image chat parts are converted to Ollama's native message image format.
 
 ## Ollama OpenAI-Compatible
 
-Provider id:
+Provider ID:
 
 ```txt
 ollama-openai
@@ -46,18 +52,17 @@ Default base URL:
 http://localhost:11434/v1
 ```
 
-Used endpoints:
+Use this provider when you want Ollama through an OpenAI-compatible `/v1` API shape.
 
-- `GET /v1/models`
-- `POST /v1/chat/completions`
-- `POST /v1/embeddings`
-- `POST /v1/responses`
-
-Use this provider when you want Ollama to behave like a generic OpenAI-compatible endpoint.
+```ts
+const client = createLocalRelayClient({
+  providers: ["ollama-openai"],
+});
+```
 
 ## LM Studio
 
-Provider id:
+Provider ID:
 
 ```txt
 lmstudio
@@ -69,24 +74,31 @@ Default base URL:
 http://localhost:1234/v1
 ```
 
-Used endpoints:
+Before connecting:
 
-- `GET /v1/models`
-- `POST /v1/chat/completions`
-- `POST /v1/embeddings`
-- `POST /v1/responses`
+1. Open LM Studio.
+2. Start the local server from the Developer area.
+3. Load a model that supports the API you want to call.
 
-LM Studio's local server must be running before Local Relay can connect.
+```ts
+const client = createLocalRelayClient({
+  providers: ["lmstudio"],
+});
+
+const models = await client.listModels({ provider: "lmstudio" });
+```
+
+If `/v1/models` only shows an embedding model, chat requests will fail until a chat model is loaded.
 
 ## Generic OpenAI-Compatible
 
-Provider id:
+Provider ID:
 
 ```txt
 openai-compatible
 ```
 
-Use this for local servers such as vLLM, llama.cpp server, LocalAI, or any runtime that implements enough of the OpenAI-compatible API.
+Use this for local runtimes such as vLLM, llama.cpp server, LocalAI, Jan, or another local server that implements an OpenAI-compatible API.
 
 ```ts
 const client = createLocalRelayClient({
@@ -100,18 +112,18 @@ const client = createLocalRelayClient({
 });
 ```
 
-OpenAI-compatible providers can receive chat tools, multimodal chat parts, embeddings requests, and Responses API requests. Actual support depends on the local runtime and model.
+OpenAI-compatible providers can receive chat tools, multimodal chat parts, embeddings requests, and Responses API requests. Support depends on the runtime and model.
 
-## Provider Selection Guidance
+## Choosing A Provider
 
-- Prefer `ollama` for Ollama-specific local apps.
-- Prefer `lmstudio` for LM Studio's local server.
-- Prefer `openai-compatible` for custom local runtimes.
+- Use `ollama` for Ollama-native integrations.
 - Use `ollama-openai` when you specifically want Ollama through `/v1`.
+- Use `lmstudio` for LM Studio's local server.
+- Use `openai-compatible` for custom local runtimes.
 
 ## Timeouts
 
-Provider detection and model listing use short timeouts by default so unavailable local servers fail quickly. Chat and streaming requests use longer defaults because local model generation can take longer, especially on first load.
+Detection and model listing are short by default. Generation requests are longer by default.
 
 ```ts
 const client = createLocalRelayClient({
@@ -120,3 +132,5 @@ const client = createLocalRelayClient({
   requestTimeoutMs: 120000,
 });
 ```
+
+You can also set `timeoutMs` on individual chat, streaming, embedding, or response requests.

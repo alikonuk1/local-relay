@@ -2,17 +2,19 @@
 
 React hooks and lightweight UI primitives for Local Relay.
 
-## Status
+## Install
 
-`0.1.0` alpha. The API is pre-1.0 and may change.
+```bash
+npm install @local-relay/core @local-relay/react
+```
 
 ## Usage
 
 ```tsx
 import { createLocalRelayClient } from "@local-relay/core";
-import { ModelSelector, useLocalModels } from "@local-relay/react";
+import { ModelSelector, ProviderSelector, useLocalModels } from "@local-relay/react";
 
-const client = createLocalRelayClient({ providers: ["ollama"] });
+const client = createLocalRelayClient({ providers: ["ollama", "lmstudio"] });
 
 function LocalModelPicker() {
   const models = useLocalModels(client, { provider: "ollama" });
@@ -27,6 +29,16 @@ function LocalModelPicker() {
 }
 ```
 
-Use `createLocalRelayProxyClient` from `@local-relay/core` with these hooks when your browser app talks through the Local Relay proxy.
+Use `createLocalRelayProxyClient` from `@local-relay/core` with these hooks when your browser app talks through `@local-relay/proxy`.
 
-See the repository README for provider, proxy, and browser limitation docs.
+## Exports
+
+- `useProviderDetection`
+- `useLocalModels`
+- `useStreamingChat`
+- `ProviderSelector`
+- `ModelSelector`
+- `ConnectionStatus`
+- `LocalRelaySetupHint`
+
+See the repository README for provider, proxy, browser, and security guides.

@@ -1,18 +1,24 @@
 # Local Relay
 
-Local Relay is a TypeScript toolkit for connecting web frontends to local LLM runtimes such as Ollama, LM Studio, llama.cpp server, and other OpenAI-compatible local APIs.
+Local Relay helps web apps connect to local LLM runtimes such as Ollama, LM Studio, llama.cpp server, vLLM, LocalAI, and other OpenAI-compatible local APIs.
 
-The goal is to provide the connector layer, not a full chat product. Apps should be able to detect local providers, list models, let users choose one, stream responses, create embeddings, pass tool definitions, send multimodal chat input, and use OpenAI-compatible Responses API endpoints with a consistent API.
+It gives your app one TypeScript interface for common local-model workflows:
+
+- Detect local providers.
+- List available models.
+- Send chat requests.
+- Stream tokens as they are generated.
+- Create embeddings.
+- Use local OpenAI-compatible Responses API endpoints.
+- Route browser apps through an optional localhost proxy when direct calls are blocked by CORS.
+
+Local Relay is a connector library, not a full chat application.
 
 ## Packages
 
-- `@local-relay/core`: provider detection, model listing, chat, streaming, embeddings, Responses API helpers, and normalized errors.
-- `@local-relay/react`: React hooks and lightweight UI primitives.
-- `@local-relay/proxy`: optional localhost proxy for CORS and hosted app reliability.
-
-## Current Status
-
-Alpha-ready local development build. The core, React, proxy, docs, and Vite example are implemented, but the public API should still be treated as pre-1.0 and subject to change.
+- `@local-relay/core`: provider clients, model listing, chat, streaming, embeddings, Responses API helpers, proxy client, and normalized errors.
+- `@local-relay/react`: React hooks and small UI primitives for provider/model selection and streaming chat.
+- `@local-relay/proxy`: a localhost companion process for browser apps that cannot call local providers directly.
 
 ## Install
 
@@ -20,7 +26,7 @@ Alpha-ready local development build. The core, React, proxy, docs, and Vite exam
 npm install @local-relay/core
 ```
 
-Optional packages:
+React helpers and the proxy are optional:
 
 ```bash
 npm install @local-relay/react
@@ -36,7 +42,7 @@ const client = createLocalRelayClient({
   providers: ["ollama", "lmstudio"],
 });
 
-const detection = await client.detectProviders();
+const providers = await client.detectProviders();
 const models = await client.listModels({ provider: "ollama" });
 
 const response = await client.chat({
@@ -44,9 +50,11 @@ const response = await client.chat({
   model: models[0].id,
   messages: [{ role: "user", content: "Say hello from a local model." }],
 });
+
+console.log(response.content);
 ```
 
-Streaming uses an async iterable:
+## Streaming
 
 ```ts
 for await (const event of client.streamChat({
@@ -55,14 +63,34 @@ for await (const event of client.streamChat({
   messages: [{ role: "user", content: "Write one sentence." }],
 })) {
   if (event.type === "token") {
-    console.log(event.text);
+    appendToTranscript(event.text);
   }
 }
 ```
 
+## Browser Apps
+
+Some local runtimes do not allow direct browser requests from your app's origin. In that case, run the optional proxy on the user's machine and use the proxy client:
+
+```bash
+npx @local-relay/proxy --allowed-origin http://localhost:5173
+```
+
+```ts
+import { createLocalRelayProxyClient } from "@local-relay/core";
+
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
+});
+
+const models = await client.listModels({ provider: "lmstudio" });
+```
+
+The proxy binds to `127.0.0.1` by default and only forwards to local provider URLs.
+
 ## Advanced APIs
 
-OpenAI-compatible local providers can receive tool definitions, multimodal chat content, embeddings requests, and Responses API calls. Ollama native supports embeddings through `/api/embed` and image chat parts through Ollama's `images` message field.
+Embeddings:
 
 ```ts
 const embedding = await client.embeddings({
@@ -72,10 +100,12 @@ const embedding = await client.embeddings({
 });
 ```
 
+Tools and multimodal chat content for OpenAI-compatible local providers:
+
 ```ts
-const response = await client.chat({
+const result = await client.chat({
   provider: "lmstudio",
-  model: "local-vision-or-tool-model",
+  model: "local-tool-or-vision-model",
   messages: [
     {
       role: "user",
@@ -98,51 +128,26 @@ const response = await client.chat({
 });
 ```
 
+Responses API helpers for local OpenAI-compatible servers:
+
 ```ts
-const created = await client.createResponse({
+const response = await client.createResponse({
   provider: "openai-compatible",
   baseUrl: "http://localhost:8000/v1",
   model: "local-responses-model",
   input: "Write a one-line summary.",
 });
-
-for await (const event of client.streamResponse({
-  provider: "openai-compatible",
-  baseUrl: "http://localhost:8000/v1",
-  model: "local-responses-model",
-  input: "Stream a short answer.",
-})) {
-  if (event.type === "text-delta") {
-    console.log(event.text);
-  }
-}
 ```
 
-## Proxy Client
+Feature support depends on the selected runtime and model. Local Relay forwards a consistent request shape, but it cannot make a provider support tools, vision, embeddings, or `/v1/responses` if that provider does not implement them.
 
-When browser-to-provider calls are blocked by CORS or deployment policy, run the optional proxy and use the proxy client with the same core API shape:
-
-```bash
-npx @local-relay/proxy
-```
-
-```ts
-import { createLocalRelayProxyClient } from "@local-relay/core";
-
-const client = createLocalRelayProxyClient({
-  baseUrl: "http://127.0.0.1:44114",
-});
-
-const models = await client.listModels({ provider: "ollama" });
-```
-
-## React Helpers
+## React
 
 ```tsx
 import { createLocalRelayClient } from "@local-relay/core";
-import { ModelSelector, useLocalModels } from "@local-relay/react";
+import { ModelSelector, ProviderSelector, useLocalModels } from "@local-relay/react";
 
-const client = createLocalRelayClient({ providers: ["ollama"] });
+const client = createLocalRelayClient({ providers: ["ollama", "lmstudio"] });
 
 function LocalModelPicker() {
   const models = useLocalModels(client, { provider: "ollama" });
@@ -157,63 +162,18 @@ function LocalModelPicker() {
 }
 ```
 
-## Local Proxy
-
-The proxy is useful when a browser app needs a stable localhost endpoint instead of calling Ollama or LM Studio directly.
-
-```bash
-npx @local-relay/proxy
-```
-
-Default URL:
-
-```txt
-http://127.0.0.1:44114
-```
-
-Routes:
-
-- `GET /health`
-- `GET /providers`
-- `GET /providers/:provider/models`
-- `POST /providers/:provider/chat`
-- `POST /providers/:provider/chat/stream`
-- `POST /providers/:provider/embeddings`
-- `POST /providers/:provider/responses`
-- `POST /providers/:provider/responses/stream`
-
-The proxy binds to `127.0.0.1` by default and refuses non-local provider URLs by default.
-
 ## Example App
 
-Run the Vite React example locally:
+Run the Vite React example:
 
 ```bash
 npm install
 npm run dev --workspace @local-relay/example-vite-react-basic
 ```
 
-The example includes provider detection, model selection, direct Ollama calls, a diagnostics panel, and incremental streaming in a ChatGPT-style local chat UI.
+The example includes provider detection, model selection, direct/proxy mode, diagnostics, and incremental streaming in a ChatGPT-style local chat UI.
 
-## Development
-
-```bash
-npm install
-npm run typecheck
-npm test
-npm run build
-```
-
-The packages build with TypeScript directly and tests use Node's built-in test runner.
-
-Optional real-provider tests:
-
-```bash
-LOCAL_RELAY_TEST_OLLAMA=1 npm test --workspace @local-relay/core
-LOCAL_RELAY_TEST_LMSTUDIO=1 npm test --workspace @local-relay/core
-```
-
-## Docs
+## Documentation
 
 - [Getting started](./docs/getting-started.md)
 - [Provider guides](./docs/providers.md)
@@ -222,7 +182,8 @@ LOCAL_RELAY_TEST_LMSTUDIO=1 npm test --workspace @local-relay/core
 - [Proxy](./docs/proxy.md)
 - [Error handling](./docs/error-handling.md)
 - [Security](./docs/security.md)
-- [API stability notes](./docs/api-review.md)
-- [Integration tests](./docs/integration-tests.md)
-- [Publishing](./docs/publishing.md)
 - [Release notes](./docs/release-notes.md)
+
+## License
+
+MIT

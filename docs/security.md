@@ -1,71 +1,74 @@
-# Security Notes
+# Security
 
-Local Relay is designed for local-first AI integrations. It should not turn a user's local LLM runtime into a public network service.
+Local Relay is designed for local-first AI integrations. It should help a user's browser or app talk to local LLM runtimes without turning those runtimes into public network services.
 
-## Defaults
+## Data Flow
 
-- No telemetry.
-- No prompt logging.
-- Known localhost provider URLs only.
-- Proxy binds to `127.0.0.1` by default.
-- Proxy rejects non-local provider URLs by default.
-- Proxy has a request body limit.
+Local Relay sends prompts, messages, embeddings input, and response requests only to the provider you configure.
 
-## Proxy Binding
+It does not:
 
-The proxy only binds to localhost by default.
+- Send telemetry.
+- Log prompts or responses.
+- Store conversation data.
+- Contact hosted model APIs by default.
 
-Allowed:
+Your application is still responsible for treating prompts and model output as sensitive user data.
 
-- `127.0.0.1`
-- `localhost`
-- `::1`
+## Direct Client
 
-Do not bind the proxy to `0.0.0.0` for normal use. Local Relay's alpha proxy intentionally supports localhost binding only.
+`createLocalRelayClient` calls the configured provider URL directly from the current runtime.
 
-## Provider URLs
+In a browser, that means the provider must allow your app's origin. If direct browser calls fail because of CORS or browser policy, use the proxy client instead.
 
-The proxy rejects remote provider URLs by default. This prevents a browser app from using the proxy as a general network relay.
+## Proxy Client
 
-## Prompt Data
+The proxy is a local companion process for browser apps.
 
-Local Relay passes prompts to the configured local provider. It does not store or transmit prompts elsewhere.
+Default behavior:
 
-Application developers should still treat prompts and responses as sensitive application data.
+- Binds to `127.0.0.1`.
+- Rejects non-local provider URLs.
+- Limits request bodies.
+- Does not log prompts or responses.
+- Supports explicit CORS origins.
 
-## CORS
-
-For development, the proxy allows any origin by default. For product use, configure allowed origins:
+Start the proxy with an allowed origin for product integrations:
 
 ```bash
 npx @local-relay/proxy --allowed-origin https://your-app.example
 ```
 
-## Proxy Security Review
+For local apps:
 
-Reviewed for the `0.1.0` alpha candidate.
+```bash
+npx @local-relay/proxy --allowed-origin http://localhost:5173
+```
 
-Current behavior:
+## Provider URLs
 
-- Default bind host is `127.0.0.1`.
-- Bind hosts are restricted to `127.0.0.1`, `localhost`, and `::1`.
-- Configured provider URLs are rejected unless their host is `localhost`, `127.0.0.1`, or `::1`.
-- Per-request `baseUrl` overrides are validated with the same localhost-only rule.
-- Request bodies are limited to 1 MB by default.
-- The proxy does not log prompts or responses.
-- Streaming forwards server-sent events and serializes stream errors without exposing stack traces.
-- CORS defaults to any origin for local development, and can be narrowed with `--allowed-origin`.
+Keep provider URLs local unless you intentionally build a custom adapter for another trust boundary.
 
-Alpha risk accepted:
+Allowed by the proxy by default:
 
-- `allowedOrigins` defaults to `["*"]` for local development ergonomics. Product integrations should set explicit origins.
-- Provider allowlisting is hostname-based and intentionally limited to localhost names; it does not support private LAN hosts in alpha.
+- `http://localhost:11434`
+- `http://127.0.0.1:1234/v1`
+- `http://[::1]:8000/v1`
 
-## Security Review Checklist
+Rejected by the proxy by default:
 
-- Confirm proxy bind host is localhost. Done.
-- Confirm non-local provider URLs are rejected. Done.
-- Confirm prompts are not logged. Done.
-- Confirm CORS origins are configured for the intended app. Required for product use; alpha default is permissive for local development.
-- Confirm request body limits are appropriate for expected workloads. Done for alpha default of 1 MB.
-- Confirm dependency audit passes. Done during dependency install: 0 vulnerabilities reported.
+- `https://example.com/v1`
+- `http://192.168.1.25:11434`
+
+## Recommended Product Defaults
+
+- Ask the user before connecting to a local provider.
+- Show the provider name and base URL in setup UI.
+- Use explicit `--allowed-origin` values for proxy installations.
+- Do not display raw stack traces to end users.
+- Surface Local Relay error suggestions in setup or troubleshooting screens.
+- Treat prompts, tool results, files, and model responses as private user data.
+
+## What Local Relay Does Not Do
+
+Local Relay does not install models, manage provider permissions, expose a remote tunnel, or make browser-blocked direct requests succeed automatically. Use the proxy for browser apps that need a reliable localhost integration path.

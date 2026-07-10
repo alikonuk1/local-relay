@@ -1,15 +1,13 @@
 # @local-relay/proxy
 
-Optional localhost proxy for Local Relay browser integrations.
+Localhost companion process for Local Relay browser integrations.
 
-## Status
+Use this package when a browser app cannot call Ollama, LM Studio, or another local provider directly because of CORS or browser policy.
 
-`0.1.0` alpha. The API is pre-1.0 and may change.
-
-## Usage
+## Run
 
 ```bash
-npx @local-relay/proxy
+npx @local-relay/proxy --allowed-origin http://localhost:5173
 ```
 
 Default URL:
@@ -18,8 +16,25 @@ Default URL:
 http://127.0.0.1:44114
 ```
 
-The proxy binds to `127.0.0.1` by default and rejects non-local provider URLs by default.
+## Use From The Browser
 
-Use it from browser apps with `createLocalRelayProxyClient` from `@local-relay/core`. The proxy forwards model listing, chat, streaming chat, embeddings, Responses API calls, and streaming Responses API events.
+```ts
+import { createLocalRelayProxyClient } from "@local-relay/core";
 
-See the repository README for provider, proxy, and browser limitation docs.
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
+});
+
+const models = await client.listModels({ provider: "lmstudio" });
+```
+
+The proxy forwards provider detection, model listing, chat, streaming chat, embeddings, Responses API calls, and streaming Responses API events.
+
+## Defaults
+
+- Binds to `127.0.0.1`.
+- Rejects non-local provider URLs.
+- Does not log prompts or responses.
+- Limits request body size.
+
+See the repository README for setup, browser, and security guides.

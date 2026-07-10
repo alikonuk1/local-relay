@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { createLocalRelayClient } from "@local-relay/core";
+import { createLocalRelayClient, createLocalRelayProxyClient } from "@local-relay/core";
 import type { ChatMessage, ProviderId } from "@local-relay/core";
 import {
   ModelSelector,
@@ -15,10 +15,20 @@ interface ConversationMessage {
 }
 
 export function App() {
+  const [connectionMode, setConnectionMode] = useState<"proxy" | "direct">("proxy");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
+  const [proxyBaseUrl, setProxyBaseUrl] = useState("http://127.0.0.1:44114");
   const client = useMemo(
-    () =>
-      createLocalRelayClient({
+    () => {
+      if (connectionMode === "proxy") {
+        return createLocalRelayProxyClient({
+          baseUrl: proxyBaseUrl,
+          timeoutMs: 10000,
+          requestTimeoutMs: 60000,
+        });
+      }
+
+      return createLocalRelayClient({
         timeoutMs: 30000,
         requestTimeoutMs: 60000,
         providers: [
@@ -33,8 +43,9 @@ export function App() {
             baseUrl: "http://127.0.0.1:1234/v1",
           },
         ],
-      }),
-    [ollamaBaseUrl],
+      });
+    },
+    [connectionMode, ollamaBaseUrl, proxyBaseUrl],
   );
 
   const detection = useProviderDetection(client);
@@ -150,12 +161,32 @@ export function App() {
 
   async function runDiagnostics() {
     const lines: string[] = [];
-    const endpoints = ["/api/version", "/api/tags", "/api/ps"];
 
-    for (const endpoint of endpoints) {
-      const url = `${ollamaBaseUrl.replace(/\/+$/, "")}${endpoint}`;
-      await recordDiagnostic(lines, `fetch ${endpoint}`, async () => {
-        const response = await fetch(url);
+    if (connectionMode === "proxy") {
+      const proxyEndpoints = ["/health", "/providers"];
+
+      for (const endpoint of proxyEndpoints) {
+        const url = `${proxyBaseUrl.replace(/\/+$/, "")}${endpoint}`;
+        await recordDiagnostic(lines, `proxy fetch ${endpoint}`, async () => {
+          const response = await fetch(url);
+          const text = await response.text();
+          return `${response.status} ${response.statusText} ${text.length} bytes`;
+        });
+      }
+    } else {
+      const ollamaEndpoints = ["/api/version", "/api/tags", "/api/ps"];
+
+      for (const endpoint of ollamaEndpoints) {
+        const url = `${ollamaBaseUrl.replace(/\/+$/, "")}${endpoint}`;
+        await recordDiagnostic(lines, `ollama fetch ${endpoint}`, async () => {
+          const response = await fetch(url);
+          const text = await response.text();
+          return `${response.status} ${response.statusText} ${text.length} bytes`;
+        });
+      }
+
+      await recordDiagnostic(lines, "lmstudio fetch /v1/models", async () => {
+        const response = await fetch("http://127.0.0.1:1234/v1/models");
         const text = await response.text();
         return `${response.status} ${response.statusText} ${text.length} bytes`;
       });
@@ -173,7 +204,8 @@ export function App() {
     });
 
     await recordDiagnostic(lines, "client.listModels", async () => {
-      const result = await client.listModels({ provider: "ollama", timeoutMs: 10000 });
+      const provider = selectedProvider || "lmstudio";
+      const result = await client.listModels({ provider, timeoutMs: 10000 });
       return `${result.length} models`;
     });
 
@@ -203,22 +235,54 @@ export function App() {
 
         <section className="control-panel" aria-label="Provider setup">
           <div className="control-row">
+            <label htmlFor="connection-mode">Mode</label>
+            <div className="segmented-control" id="connection-mode">
+              <button
+                type="button"
+                data-active={connectionMode === "proxy"}
+                onClick={() => setConnectionMode("proxy")}
+              >
+                Proxy
+              </button>
+              <button
+                type="button"
+                data-active={connectionMode === "direct"}
+                onClick={() => setConnectionMode("direct")}
+              >
+                Direct
+              </button>
+            </div>
+          </div>
+
+          {connectionMode === "proxy" ? (
+            <div className="control-row">
+              <label htmlFor="proxy-base-url">Proxy URL</label>
+              <input
+                id="proxy-base-url"
+                className="text-input"
+                value={proxyBaseUrl}
+                onChange={(event) => setProxyBaseUrl(event.currentTarget.value)}
+              />
+            </div>
+          ) : (
+            <div className="control-row">
+              <label htmlFor="ollama-base-url">Ollama URL</label>
+              <input
+                id="ollama-base-url"
+                className="text-input"
+                value={ollamaBaseUrl}
+                onChange={(event) => setOllamaBaseUrl(event.currentTarget.value)}
+              />
+            </div>
+          )}
+
+          <div className="control-row">
             <label htmlFor="provider">Provider</label>
             <ProviderSelector
               providers={detection.providers}
               value={selectedProvider}
               onChange={setSelectedProvider}
               className="select"
-            />
-          </div>
-
-          <div className="control-row">
-            <label htmlFor="ollama-base-url">Ollama URL</label>
-            <input
-              id="ollama-base-url"
-              className="text-input"
-              value={ollamaBaseUrl}
-              onChange={(event) => setOllamaBaseUrl(event.currentTarget.value)}
             />
           </div>
 
@@ -335,7 +399,7 @@ export function App() {
               placeholder={
                 models.selectedModelId
                   ? "Message Local Relay"
-                  : "Detect Ollama and choose a model first"
+                  : "Detect a provider and choose a model first"
               }
               rows={1}
             />

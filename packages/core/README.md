@@ -1,12 +1,14 @@
 # @local-relay/core
 
-Core TypeScript client for connecting web apps to local LLM providers.
+Core TypeScript client for connecting apps to local LLM providers.
 
-## Status
+## Install
 
-`0.1.0` alpha. The API is pre-1.0 and may change.
+```bash
+npm install @local-relay/core
+```
 
-## Usage
+## Direct Client
 
 ```ts
 import { createLocalRelayClient } from "@local-relay/core";
@@ -15,15 +17,43 @@ const client = createLocalRelayClient({
   providers: ["ollama", "lmstudio"],
 });
 
-const providers = await client.detectProviders();
 const models = await client.listModels({ provider: "ollama" });
 
 const response = await client.chat({
   provider: "ollama",
   model: models[0].id,
   messages: [{ role: "user", content: "Say hello." }],
-  timeoutMs: 60000,
 });
+
+console.log(response.content);
+```
+
+## Streaming
+
+```ts
+for await (const event of client.streamChat({
+  provider: "lmstudio",
+  model: "local-chat-model",
+  messages: [{ role: "user", content: "Write one sentence." }],
+})) {
+  if (event.type === "token") {
+    process.stdout.write(event.text);
+  }
+}
+```
+
+## Proxy Client
+
+Use the proxy client when a browser app talks through `@local-relay/proxy`.
+
+```ts
+import { createLocalRelayProxyClient } from "@local-relay/core";
+
+const client = createLocalRelayProxyClient({
+  baseUrl: "http://127.0.0.1:44114",
+});
+
+const models = await client.listModels({ provider: "lmstudio" });
 ```
 
 ## Advanced APIs
@@ -45,18 +75,6 @@ const response = await client.createResponse({
 });
 ```
 
-Chat requests also support OpenAI-compatible `tools`, `toolChoice`, `responseFormat`, and multimodal `content` parts.
+Chat requests also support OpenAI-compatible `tools`, `toolChoice`, `responseFormat`, and multimodal `content` parts where the selected provider supports them.
 
-## Proxy Client
-
-```ts
-import { createLocalRelayProxyClient } from "@local-relay/core";
-
-const client = createLocalRelayProxyClient({
-  baseUrl: "http://127.0.0.1:44114",
-});
-
-const models = await client.listModels({ provider: "ollama" });
-```
-
-See the repository README for provider, proxy, and browser limitation docs.
+See the repository README for provider, proxy, browser, and security guides.
